@@ -1,10 +1,15 @@
 const SOSAlert = require("../models/SOSAlert");
 const Profile = require("../models/Profile");
 const mlService = require("../services/mlServices");
+const { 
+  sendEmergencyAlertNotifications, 
+  sendBulkWhatsAppMessages,
+  isTwilioConfigured 
+} = require('../notifications');
 
-// Helper function defined at the top
+// Helper fallback department mapping function
 function getFallbackDepartment(emergencyType) {
-  const typeMapping = {
+  const map = {
     medical: "medical_health",
     fire: "emergency_response",
     flood: "emergency_response",
@@ -14,8 +19,7 @@ function getFallbackDepartment(emergencyType) {
     stranded: "community_safety",
     other: "emergency_response",
   };
-
-  return typeMapping[emergencyType] || "emergency_response";
+  return map[emergencyType] || "emergency_response";
 }
 
 exports.createSOSAlert = async (req, res) => {
@@ -24,14 +28,14 @@ exports.createSOSAlert = async (req, res) => {
     console.log("Request Body:", req.body);
     console.log("User ID from body:", req.body.userId);
 
-    const {
-      emergencyType,
-      message,
-      peopleAffected,
-      description,
-      severity,
-      location,
-      userId, // Firebase UID from request body
+    const { 
+      emergencyType, 
+      message, 
+      peopleAffected, 
+      description, 
+      severity, 
+      location, 
+      userId 
     } = req.body;
 
     console.log("Extracted userId:", userId);
@@ -44,26 +48,43 @@ exports.createSOSAlert = async (req, res) => {
         hasLocation: !!location?.address,
         hasUserId: !!userId,
       });
-      return res.status(400).json({
-        error: "Message, emergency type, location, and userId are required",
+      return res.status(400).json({ 
+        success: false,
+        error: "Message, emergency type, location, and userId are required" 
       });
     }
 
-    // Fetch user profile
+    // Validate location coordinates
+    if (!location.latitude || !location.longitude) {
+      return res.status(400).json({
+        success: false,
+        error: "Location coordinates (latitude and longitude) are required"
+      });
+    }
+
+    // Fetch user profile with full details
     console.log("Fetching profile for userId:", userId);
     const userProfile = await Profile.findOne({ userId });
     console.log(
       "Profile found:",
       !!userProfile,
-      userProfile ? { name: userProfile.name, id: userProfile._id } : null
+      userProfile ? { 
+        name: userProfile.name, 
+        id: userProfile._id,
+        phone: userProfile.phone,
+        emergencyContacts: userProfile.emergencyContacts?.length || 0
+      } : null
     );
 
     if (!userProfile) {
       console.log("Profile not found for userId:", userId);
-      return res.status(404).json({ error: "User profile not found" });
+      return res.status(404).json({ 
+        success: false,
+        error: "User profile not found" 
+      });
     }
 
-    // Create the SOS alert
+    // Create the SOS alert with correct location format
     const sosAlert = new SOSAlert({
       userId: userProfile.userId,
       userName: userProfile.name,
@@ -73,125 +94,61 @@ exports.createSOSAlert = async (req, res) => {
       peopleAffected: peopleAffected || 1,
       description,
       severity: severity || "high",
-      location,
+      location: {
+        lat: location.latitude,
+        lng: location.longitude,
+        address: location.address
+      }
     });
 
-    console.log("SOS Alert object created with userId:", sosAlert.userId);
+    console.log("SOS Alert object created with location:", sosAlert.location);
 
     // Get ML predictions
-    // Get ML predictions
+    let primaryDepartments = [];
+    let urgencyLevel = severity || "medium";
+    
     try {
       console.log("Sending to ML service:", message);
       const mlResponse = await mlService.predictSOS(message);
       console.log("ML Response received:", mlResponse);
 
       // Extract departments from ML response
-      let primaryDepartments = [];
-
-      // Check if departments exist in response
-      if (
-        mlResponse.departments &&
-        typeof mlResponse.departments === "object"
-      ) {
-        // ML service returns departments as an object with keys
+      if (mlResponse.departments && typeof mlResponse.departments === "object") {
         primaryDepartments = Object.keys(mlResponse.departments);
-        console.log(
-          "✅ Extracted primary departments from ML:",
-          primaryDepartments
-        );
-      } else if (
-        mlResponse.primary_departments &&
-        Array.isArray(mlResponse.primary_departments)
-      ) {
-        // Already in array format
+        console.log("✅ Extracted primary departments from ML:", primaryDepartments);
+      } else if (mlResponse.primary_departments && Array.isArray(mlResponse.primary_departments)) {
         primaryDepartments = mlResponse.primary_departments;
-        console.log(
-          "✅ Using primary_departments from ML:",
-          primaryDepartments
-        );
-      } else {
-        console.log(
-          "⚠️ No departments field in ML response, will analyze predictions"
-        );
-      }
-
-      // If still no departments, analyze predictions to determine departments
-      if (primaryDepartments.length === 0 && mlResponse.predictions) {
-        console.log("📊 Analyzing predictions to determine departments...");
+        console.log("✅ Using primary_departments from ML:", primaryDepartments);
+      } else if (mlResponse.predictions) {
         const preds = mlResponse.predictions;
         const deptSet = new Set();
-
-        // Emergency Response
-        if (
-          preds.search_and_rescue ||
-          preds.security ||
-          preds.military ||
-          preds.aid_related
-        ) {
+        
+        if (preds.search_and_rescue || preds.security || preds.military || preds.aid_related) {
           deptSet.add("emergency_response");
         }
-
-        // Medical Health
         if (preds.medical_help || preds.medical_products || preds.hospitals) {
           deptSet.add("medical_health");
         }
-
-        // Relief & Shelter
-        if (
-          preds.shelter ||
-          preds.food ||
-          preds.water ||
-          preds.clothing ||
-          preds.refugees
-        ) {
+        if (preds.shelter || preds.food || preds.water || preds.clothing || preds.refugees) {
           deptSet.add("relief_shelter");
         }
-
-        // Community Safety (Weather/Disaster monitoring)
-        if (
-          preds.weather_related ||
-          preds.floods ||
-          preds.storm ||
-          preds.earthquake ||
-          preds.fire
-        ) {
+        if (preds.weather_related || preds.floods || preds.storm || preds.earthquake || preds.fire) {
           deptSet.add("community_safety");
         }
-
-        // Infrastructure
-        if (
-          preds.infrastructure_related ||
-          preds.buildings ||
-          preds.electricity ||
-          preds.transport ||
-          preds.tools
-        ) {
+        if (preds.infrastructure_related || preds.buildings || preds.electricity || preds.transport || preds.tools) {
           deptSet.add("infrastructure");
         }
-
+        
         primaryDepartments = Array.from(deptSet);
-        console.log(
-          "✅ Determined departments from predictions:",
-          primaryDepartments
-        );
+        console.log("✅ Determined departments from predictions:", primaryDepartments);
       }
 
       // Calculate urgency level from predictions
-      let urgencyLevel = severity || "medium";
       if (mlResponse.predictions) {
         const preds = mlResponse.predictions;
-        if (preds.death || preds.missing_people) {
+        if (preds.death || preds.missing_people || preds.medical_help || preds.search_and_rescue) {
           urgencyLevel = "critical";
-        } else if (preds.medical_help || preds.search_and_rescue) {
-          urgencyLevel = "critical";
-        } else if (
-          preds.floods ||
-          preds.fire ||
-          preds.earthquake ||
-          preds.storm
-        ) {
-          urgencyLevel = "high";
-        } else if (preds.shelter || preds.aid_related) {
+        } else if (preds.floods || preds.fire || preds.earthquake || preds.storm || preds.shelter || preds.aid_related) {
           urgencyLevel = "high";
         }
       }
@@ -210,145 +167,138 @@ exports.createSOSAlert = async (req, res) => {
           }
         });
       }
-      console.log("📋 Active categories:", activeCategories.length);
-
-      // Build department details (which categories belong to which department)
-      const departmentDetails = {};
-      primaryDepartments.forEach((dept) => {
-        departmentDetails[dept] = activeCategories
-          .filter((cat) => {
-            const category = cat.category;
-            // Map categories to departments
-            if (dept === "emergency_response") {
-              return [
-                "search_and_rescue",
-                "security",
-                "military",
-                "aid_related",
-                "request",
-              ].includes(category);
-            }
-            if (dept === "medical_health") {
-              return ["medical_help", "medical_products", "hospitals"].includes(
-                category
-              );
-            }
-            if (dept === "relief_shelter") {
-              return [
-                "shelter",
-                "food",
-                "water",
-                "clothing",
-                "refugees",
-              ].includes(category);
-            }
-            if (dept === "community_safety") {
-              return [
-                "weather_related",
-                "floods",
-                "storm",
-                "earthquake",
-                "fire",
-                "cold",
-                "other_weather",
-              ].includes(category);
-            }
-            if (dept === "infrastructure") {
-              return [
-                "infrastructure_related",
-                "buildings",
-                "electricity",
-                "transport",
-                "tools",
-                "shops",
-                "aid_centers",
-              ].includes(category);
-            }
-            return false;
-          })
-          .map((cat) => cat.category);
-      });
 
       // Store ML classification results
       sosAlert.mlClassification = {
         predictions: mlResponse.predictions,
         primaryDepartments: primaryDepartments,
-        departmentDetails: departmentDetails,
         activeCategories: activeCategories,
         confidenceScore: mlResponse.confidence_score || 0.8,
         urgencyLevel: urgencyLevel,
         processedAt: new Date(),
       };
 
-      console.log("💾 Stored ML classification:", {
-        primaryDepartments,
-        urgencyLevel,
-        activeCategoriesCount: activeCategories.length,
-      });
-
-      // Assign to departments based on ML predictions
-      if (primaryDepartments && primaryDepartments.length > 0) {
-        console.log(
-          "✅ Assigning to ML-predicted departments:",
-          primaryDepartments
-        );
-        sosAlert.assignToDepartments(primaryDepartments, urgencyLevel);
-      } else {
-        console.log(
-          "⚠️ No departments determined, using fallback based on emergency type"
-        );
-        const fallbackDept = getFallbackDepartment(emergencyType);
-        sosAlert.assignToDepartments([fallbackDept], severity);
-      }
-
-      // If medical emergency and user has medical conditions, add to notes
-      if (emergencyType === "medical" && userProfile.medicalConditions) {
-        sosAlert.description = `${description || ""}\nMedical History: ${
-          userProfile.medicalConditions
-        }\nBlood Group: ${userProfile.bloodGroup || "Unknown"}`;
-      }
     } catch (mlError) {
       console.error("ML prediction error:", mlError);
-      console.error("ML error stack:", mlError.stack);
-      // Fallback: assign to emergency response based on emergency type
+      // Fallback assignment
+      primaryDepartments = [getFallbackDepartment(emergencyType)];
+      urgencyLevel = severity || "high";
+      
+      sosAlert.mlClassification = {
+        primaryDepartments: primaryDepartments,
+        urgencyLevel: urgencyLevel,
+        processedAt: new Date(),
+        fallbackUsed: true
+      };
+    }
+
+    // Assign to departments
+    if (primaryDepartments.length > 0) {
+      console.log("✅ Assigning to departments:", primaryDepartments);
+      sosAlert.assignToDepartments(primaryDepartments, urgencyLevel);
+    } else {
       const fallbackDept = getFallbackDepartment(emergencyType);
       sosAlert.assignToDepartments([fallbackDept], severity);
+    }
+
+    // If medical emergency and user has medical conditions, add to description
+    if (emergencyType === "medical" && userProfile.medicalConditions) {
+      sosAlert.description = `${description || ""}\n\nMedical History: ${userProfile.medicalConditions}\nBlood Group: ${userProfile.bloodGroup || "Unknown"}`;
     }
 
     // Save the alert
     console.log("Saving SOS alert to database...");
     await sosAlert.save();
-    console.log("SOS alert saved successfully");
+    console.log("✅ SOS alert saved successfully with ID:", sosAlert._id);
 
-    // Notify emergency contacts if critical
-    if (
-      sosAlert.mlClassification.urgencyLevel === "critical" &&
-      userProfile.emergencyContacts.length > 0
-    ) {
-      console.log(
-        "Notifying emergency contacts:",
-        userProfile.emergencyContacts
-      );
+    // Send WhatsApp notifications (non-blocking)
+    if (isTwilioConfigured()) {
+      console.log("📱 Sending WhatsApp notifications...");
+      
+      // Send to user and emergency contacts
+      sendEmergencyAlertNotifications(userProfile, {
+        emergencyType,
+        location: sosAlert.location,
+        message,
+        urgencyLevel
+      }).then(results => {
+        console.log("✅ Emergency notifications sent:", results);
+      }).catch(error => {
+        console.error("❌ Failed to send emergency notifications:", error);
+      });
+
+      // Send to nearby users within 5km
+      Profile.find({
+        location: {
+          $near: {
+            $geometry: {
+              type: "Point",
+              coordinates: [location.longitude, location.latitude]
+            },
+            $maxDistance: 5000 // 5km radius
+          }
+        },
+        phone: { $exists: true, $ne: null, $regex: /^\+/ },
+        userId: { $ne: userId } // Exclude the reporter
+      }).limit(50).then(nearbyUsers => {
+        if (nearbyUsers.length > 0) {
+          console.log(`📍 Found ${nearbyUsers.length} nearby users to notify`);
+          
+          const nearbyMessage = `
+⚠️ EMERGENCY ALERT NEARBY
+
+Type: ${emergencyType.toUpperCase()}
+Location: ${location.address}
+Distance: Within 5km from you
+
+${message}
+
+Stay safe and be aware of your surroundings.
+`.trim();
+
+          const phoneNumbers = nearbyUsers.map(u => u.phone).filter(p => p && p.startsWith('+'));
+          
+          sendBulkWhatsAppMessages(phoneNumbers, nearbyMessage).then(results => {
+            const successCount = results.filter(r => r.value?.success).length;
+            console.log(`✅ Notified ${successCount} nearby users via WhatsApp`);
+          }).catch(error => {
+            console.error("❌ Failed to notify nearby users:", error);
+          });
+        } else {
+          console.log("ℹ️ No nearby users found within 5km");
+        }
+      }).catch(error => {
+        console.error("❌ Error finding nearby users:", error);
+      });
+    } else {
+      console.warn("⚠️ Twilio not configured - WhatsApp notifications disabled");
     }
 
+    // Return success response
     res.status(201).json({
       success: true,
       message: "SOS Alert created successfully",
       alertId: sosAlert._id,
-      assignedDepartments: sosAlert.assignedDepartments.map((d) => ({
+      assignedDepartments: sosAlert.assignedDepartments.map(d => ({
         department: d.department,
         priority: d.priority,
+        status: d.status
       })),
-      urgencyLevel: sosAlert.mlClassification.urgencyLevel,
+      urgencyLevel,
+      notificationsEnabled: isTwilioConfigured()
     });
+
   } catch (error) {
-    console.error("SOS creation error:", error);
+    console.error("❌ SOS creation error:", error);
     console.error("Error stack:", error.stack);
-    res
-      .status(500)
-      .json({ error: "Failed to create SOS alert", details: error.message });
+    res.status(500).json({ 
+      success: false,
+      error: "Failed to create SOS alert", 
+      details: error.message 
+    });
   }
 };
+
 
 // Get alerts for a specific department
 exports.getDepartmentAlerts = async (req, res) => {
@@ -428,9 +378,10 @@ exports.getDepartmentAlerts = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching department alerts:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch alerts", details: error.message });
+    res.status(500).json({ 
+      error: "Failed to fetch alerts", 
+      details: error.message 
+    });
   }
 };
 
@@ -476,13 +427,13 @@ exports.getDepartmentStats = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching department stats:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch statistics", details: error.message });
+    res.status(500).json({ 
+      error: "Failed to fetch statistics", 
+      details: error.message 
+    });
   }
 };
 
-// Update alert status
 // Update alert status - FIXED VERSION
 exports.updateAlertStatus = async (req, res) => {
   try {
@@ -499,12 +450,21 @@ exports.updateAlertStatus = async (req, res) => {
       });
     }
 
+    // Validate status against enum values
+    const validStatuses = ['pending', 'verified', 'assigned', 'in_progress', 'resolved', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`
+      });
+    }
+
     // Prepare admin info
     const adminInfo = adminId && adminName
       ? { id: adminId, name: adminName }
       : null;
 
-    // Handle main alert status transitions (pending → verified → assigned → in_progress → resolved)
+    // Handle main alert status transitions
     const mainStatusTransitions = ['pending', 'verified', 'assigned', 'in_progress', 'resolved', 'cancelled'];
     
     if (mainStatusTransitions.includes(status)) {
@@ -583,12 +543,13 @@ exports.updateAlertStatus = async (req, res) => {
     res.json({
       success: true,
       message: "Alert status updated successfully",
-      alert: {
+      data: {
         _id: alert._id,
         status: alert.status,
         verified: alert.verified,
         departmentStatus: deptAssignment?.status,
-        updatedAt: alert.updatedAt
+        updatedAt: alert.updatedAt,
+        assignedDepartments: alert.assignedDepartments
       }
     });
   } catch (error) {
@@ -609,7 +570,10 @@ exports.getUserAlerts = async (req, res) => {
     // Verify user exists
     const userProfile = await Profile.findOne({ userId });
     if (!userProfile) {
-      return res.status(404).json({ error: "User profile not found" });
+      return res.status(404).json({ 
+        success: false,
+        error: "User profile not found" 
+      });
     }
 
     const alerts = await SOSAlert.find({ userId })
@@ -626,7 +590,12 @@ exports.getUserAlerts = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch user alerts" });
+    console.error("Error fetching user alerts:", error);
+    res.status(500).json({ 
+      success: false,
+      error: "Failed to fetch user alerts",
+      details: error.message 
+    });
   }
 };
 
@@ -637,7 +606,10 @@ exports.getAlertDetails = async (req, res) => {
     const alert = await SOSAlert.findById(alertId);
 
     if (!alert) {
-      return res.status(404).json({ error: "Alert not found" });
+      return res.status(404).json({ 
+        success: false,
+        error: "Alert not found" 
+      });
     }
 
     // Get user profile for additional info
@@ -651,11 +623,18 @@ exports.getAlertDetails = async (req, res) => {
             name: userProfile.name,
             trustScore: userProfile.trustScore,
             emergencyContacts: userProfile.emergencyContacts,
+            medicalConditions: userProfile.medicalConditions,
+            bloodGroup: userProfile.bloodGroup,
           }
         : null,
     });
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch alert details" });
+    console.error("Error fetching alert details:", error);
+    res.status(500).json({ 
+      success: false,
+      error: "Failed to fetch alert details",
+      details: error.message 
+    });
   }
 };
 
@@ -682,9 +661,11 @@ exports.getActiveDepartmentAlerts = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching active alerts:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch active alerts", details: error.message });
+    res.status(500).json({ 
+      success: false,
+      error: "Failed to fetch active alerts", 
+      details: error.message 
+    });
   }
 };
 
@@ -711,10 +692,10 @@ exports.getUrgentDepartmentAlerts = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching urgent alerts:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch urgent alerts", details: error.message });
+    res.status(500).json({ 
+      success: false,
+      error: "Failed to fetch urgent alerts", 
+      details: error.message 
+    });
   }
 };
-
-// Add other controller methods as needed...

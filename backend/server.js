@@ -18,6 +18,8 @@ const newsRoutes = require('./routes/newsRoutes');
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// Import sendWhatsAppMessage from your notifications module
+const { sendWhatsAppMessage } = require('./notifications');
 
 // Routes
 app.use("/api/profile", require("./routes/profile"));

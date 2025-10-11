@@ -44,6 +44,18 @@ const profileSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  // Geospatial location field for nearby user queries
+  location: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      default: [0, 0]
+    }
+  },
   bloodGroup: {
     type: String,
     enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', '']
@@ -53,13 +65,12 @@ const profileSchema = new mongoose.Schema({
     trim: true
   },
   emergencyContacts: [emergencyContactSchema],
-  // Update role enum to include super_admin
   role: {
     type: String,
-    enum: ['user', 'department_admin', 'admin', 'super_admin'], // Added super_admin
+    enum: ['user', 'department_admin', 'admin', 'super_admin'],
     default: 'user'
   },
-    // Volunteer-specific fields
+  // Volunteer-specific fields
   isVolunteer: {
     type: Boolean,
     default: false
@@ -91,8 +102,6 @@ const profileSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
-
-  // Add department field
   department: {
     type: String,
     default: 'general',
@@ -125,15 +134,16 @@ const profileSchema = new mongoose.Schema({
   timestamps: true
 });
 
-profileSchema.pre('save', function(next) {
-  this.lastUpdated = new Date();
-  next();
-});
-
+// Create geospatial index for location-based queries
+profileSchema.index({ location: '2dsphere' });
 profileSchema.index({ userId: 1 });
 profileSchema.index({ email: 1 });
 profileSchema.index({ isVolunteer: 1 });
 profileSchema.index({ 'availability.status': 1 });
 
+profileSchema.pre('save', function(next) {
+  this.lastUpdated = new Date();
+  next();
+});
 
 module.exports = mongoose.model('Profile', profileSchema);

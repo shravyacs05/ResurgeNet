@@ -8,6 +8,9 @@ const SOSReporting = ({ user }) => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  
   const [formData, setFormData] = useState({
     emergencyType: "",
     message: "",
@@ -15,13 +18,14 @@ const SOSReporting = ({ user }) => {
     description: "",
     severity: "high",
     location: {
-      lat: null,
-      lng: null,
+      latitude: null,
+      longitude: null,
       address: "",
     },
   });
 
   console.log("User info in SOSReporting:", user);
+
   const emergencyTypes = [
     { value: "medical", label: "Medical Emergency", icon: "🏥" },
     { value: "fire", label: "Fire", icon: "🔥" },
@@ -39,72 +43,193 @@ const SOSReporting = ({ user }) => {
   };
 
   const getCurrentLocation = () => {
+    setError('');
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          console.log('📍 Location obtained:', {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+          
           setFormData((prev) => ({
             ...prev,
             location: {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              address: "Current GPS location",
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              address: `GPS: ${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`,
             },
           }));
         },
         (error) => {
           console.error("Error getting location:", error);
-          alert("Unable to get your location. Please enter it manually.");
+          setError("Unable to get your location. Please enter it manually.");
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
         }
       );
+    } else {
+      setError("Geolocation is not supported by your browser.");
     }
   };
 
-  const handleSubmit = async () => {
-    setLoading(true);
+  // Get authentication headers
+  const getAuthHeaders = async () => {
     try {
-      // Create the message for ML analysis
-      const mlMessage = `${formData.emergencyType}: ${formData.message}. ${formData.description}. 
-        Location: ${formData.location.address}. People affected: ${formData.peopleAffected}`;
+      if (user) {
+        // Check if using Firebase (has getIdToken method)
+        if (typeof user.getIdToken === 'function') {
+          const token = await user.getIdToken();
+          return {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          };
+        }
+        // Custom auth - user object might have token or id
+        else if (user.token) {
+          return {
+            'Authorization': `Bearer ${user.token}`,
+            'Content-Type': 'application/json'
+          };
+        }
+        // Fallback - just send content type
+        else {
+          return {
+            'Content-Type': 'application/json',
+            'X-User-Id': user.id || user.uid
+          };
+        }
+      }
+      return {
+        'Content-Type': 'application/json'
+      };
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return {
+        'Content-Type': 'application/json'
+      };
+    }
+  };
 
-      // Send SOS alert
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      setLoading(true);
+      setError('');
+      
+      // Get userId - could be uid (Firebase) or id (custom auth)
+      const userId = user?.uid || user?.id;
+      
+      // Validate user
+      if (!user || !userId) {
+        setError('You must be logged in to submit an SOS alert');
+        setLoading(false);
+        return;
+      }
+
+      // Log the form data before sending
+      console.log('📤 Submitting SOS with data:', {
+        emergencyType: formData.emergencyType,
+        message: formData.message,
+        peopleAffected: formData.peopleAffected,
+        description: formData.description,
+        severity: formData.severity,
+        location: formData.location,
+        userId: userId,
+        user: user
+      });
+
+      // Validate required fields
+      if (!formData.message || !formData.emergencyType) {
+        setError('Please fill in emergency type and message');
+        setLoading(false);
+        return;
+      }
+
+      if (!formData.location?.address || (!formData.location?.latitude && !formData.location?.longitude)) {
+        setError('Please provide your location');
+        setLoading(false);
+        return;
+      }
+
+      // Get auth headers
+      const headers = await getAuthHeaders();
+
       const response = await axios.post(
         `${API_URL}/api/sos/create`,
         {
-          ...formData,
-          message: mlMessage,
-          userId: user.id,
+          emergencyType: formData.emergencyType,
+          message: formData.message,
+          peopleAffected: formData.peopleAffected || 1,
+          description: formData.description,
+          severity: formData.severity || 'high',
+          location: {
+            latitude: formData.location.latitude,
+            longitude: formData.location.longitude,
+            address: formData.location.address
+          },
+          userId: userId // Use the userId we extracted above
         },
         {
-          headers: { Authorization: `Bearer ${user.token}` },
+          headers,
+          timeout: 15000
         }
       );
 
+      console.log('✅ SOS submitted successfully:', response.data);
+      
       if (response.data.success) {
-        alert(`SOS Alert sent successfully! 
-          Alert ID: ${response.data.alertId}
-          Assigned Departments: ${response.data.assignedDepartments.join(
-            ", "
-          )}`);
-
-        // Reset form and navigate
-        setFormData({
-          emergencyType: "",
-          message: "",
-          peopleAffected: 1,
-          description: "",
-          severity: "high",
-          location: { lat: null, lng: null, address: "" },
-        });
-        setStep(1);
-        navigate("/dashboard");
+        setSuccess(true);
+        
+        // Show success message and redirect after 3 seconds
+        setTimeout(() => {
+          navigate('/alerts');
+        }, 3000);
+      } else {
+        setError(response.data.message || 'Failed to submit SOS alert');
       }
-    } catch (error) {
-      console.error("Error submitting SOS:", error);
-      alert("Failed to send SOS alert. Please try again.");
+
+    } catch (err) {
+      console.error('❌ Error submitting SOS:', err);
+      
+      // Log detailed error information
+      if (err.response) {
+        console.log('🔍 Error response data:', err.response.data);
+        console.log('🔍 Error response status:', err.response.status);
+        setError(err.response.data?.error || err.response.data?.message || 'Failed to submit SOS alert');
+      } else if (err.request) {
+        console.log('🔍 No response received:', err.request);
+        setError('No response from server. Please check your connection.');
+      } else {
+        console.log('🔍 Error:', err.message);
+        setError(err.message || 'Failed to submit SOS alert');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <div className="bg-gray-800 rounded-xl p-8 max-w-md text-center">
+          <div className="text-6xl mb-4">✅</div>
+          <h2 className="text-2xl font-bold mb-2">SOS Alert Sent!</h2>
+          <p className="text-gray-400 mb-4">
+            Your emergency alert has been sent to the relevant departments. 
+            Help is on the way!
+          </p>
+          <p className="text-sm text-gray-500">
+            Redirecting to alerts page...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -122,6 +247,20 @@ const SOSReporting = ({ user }) => {
             Get help from the appropriate department quickly
           </p>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 bg-red-900/20 border border-red-800 text-red-300 px-4 py-3 rounded-lg flex items-start gap-3">
+            <span className="text-xl">⚠️</span>
+            <div className="flex-1">
+              <p className="font-medium">Error</p>
+              <p className="text-sm">{error}</p>
+            </div>
+            <button onClick={() => setError('')} className="text-red-400 hover:text-red-300">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Progress Steps */}
         <div className="flex justify-between mb-8 relative">
@@ -165,12 +304,13 @@ const SOSReporting = ({ user }) => {
 
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Select Emergency Type
+                Select Emergency Type *
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {emergencyTypes.map((type) => (
                   <button
                     key={type.value}
+                    type="button"
                     onClick={() =>
                       setFormData((prev) => ({
                         ...prev,
@@ -205,12 +345,12 @@ const SOSReporting = ({ user }) => {
                          focus:outline-none focus:ring-2 focus:ring-red-500"
               />
               <p className="text-xs text-gray-400 mt-1">
-                Be specific - this helps our AI route your alert to the right
-                department
+                Be specific - this helps our AI route your alert to the right department
               </p>
             </div>
 
             <button
+              type="button"
               onClick={() => setStep(2)}
               disabled={!formData.emergencyType || !formData.message.trim()}
               className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 
@@ -235,6 +375,7 @@ const SOSReporting = ({ user }) => {
                 </label>
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={() =>
                       setFormData((prev) => ({
                         ...prev,
@@ -254,6 +395,7 @@ const SOSReporting = ({ user }) => {
                     className="w-20 text-center bg-gray-700 border border-gray-600 rounded px-2 py-1"
                   />
                   <button
+                    type="button"
                     onClick={() =>
                       setFormData((prev) => ({
                         ...prev,
@@ -275,6 +417,7 @@ const SOSReporting = ({ user }) => {
                   {["low", "medium", "high"].map((level) => (
                     <button
                       key={level}
+                      type="button"
                       onClick={() =>
                         setFormData((prev) => ({ ...prev, severity: level }))
                       }
@@ -314,6 +457,7 @@ const SOSReporting = ({ user }) => {
                 </label>
                 <div className="space-y-2">
                   <button
+                    type="button"
                     onClick={getCurrentLocation}
                     className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded flex items-center justify-center gap-2"
                   >
@@ -331,20 +475,27 @@ const SOSReporting = ({ user }) => {
                     }
                     className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md"
                   />
+                  {formData.location.latitude && formData.location.longitude && (
+                    <p className="text-xs text-green-400">
+                      ✓ GPS coordinates obtained
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
 
             <div className="flex gap-3 mt-6">
               <button
+                type="button"
                 onClick={() => setStep(1)}
                 className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg"
               >
                 Back
               </button>
               <button
+                type="button"
                 onClick={() => setStep(3)}
-                disabled={!formData.location.address && !formData.location.lat}
+                disabled={!formData.location.address || (!formData.location.latitude && !formData.location.longitude)}
                 className="flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 rounded-lg"
               >
                 Continue
@@ -400,13 +551,14 @@ const SOSReporting = ({ user }) => {
               <div>
                 <span className="text-gray-400">Location:</span>
                 <p className="mt-1">
-                  {formData.location.address || "GPS coordinates provided"}
+                  {formData.location.address}
                 </p>
               </div>
             </div>
 
             <div className="flex gap-3 mt-6">
               <button
+                type="button"
                 onClick={() => setStep(2)}
                 className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg"
                 disabled={loading}
@@ -414,6 +566,7 @@ const SOSReporting = ({ user }) => {
                 Back
               </button>
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={loading}
                 className="flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 rounded-lg 
