@@ -48,6 +48,7 @@ const Navbar = ({ user, onLogout }) => {
         { path: '/map', label: 'Map', icon: '🗺️' },
         { path: '/roads', label: 'Roads', icon: '🛣️' },
         { path: '/shelters', label: 'Shelters', icon: '🏠' },
+        { path: '/news', label: 'News', icon: '📰' },
         { path: '/profile', label: 'Profile', icon: '👤' }
       ],
       department_admin: [

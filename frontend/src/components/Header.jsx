@@ -60,14 +60,23 @@ const Header = ({ user, setUser }) => {
             AI Assistant
           </Link>
           
-          {(user.role === 'admin' || user.role === 'volunteer') && (
-            <Link 
-              to={user.role === 'admin' ? "/admin" : "/volunteer"} 
-              className={`px-3 py-2 rounded-md ${(isActive('/admin') || isActive('/volunteer')) ? 'bg-blue-800 text-white' : 'text-gray-300 hover:text-white'}`}
-            >
-              {user.role === 'admin' ? 'Admin' : 'Volunteer'} Dashboard
-            </Link>
-          )}
+{(user.role === 'admin' || user.role === 'volunteer') && (
+  <>
+    <Link 
+      to={user.role === 'admin' ? "/admin" : "/volunteer"} 
+      className={`px-3 py-2 rounded-md ${(isActive('/admin') || isActive('/volunteer')) ? 'bg-blue-800 text-white' : 'text-gray-300 hover:text-white'}`}
+    >
+      {user.role === 'admin' ? 'Admin' : 'Volunteer'} Dashboard
+    </Link>
+    
+    <Link 
+      to="/news" 
+      className={`px-3 py-2 rounded-md ${isActive('/news') ? 'bg-gray-800 text-white' : 'text-gray-300 hover:text-white'}`}
+    >
+      📰 News
+    </Link>
+  </>
+)}
         </div>
         
         <div className="flex items-center space-x-4">

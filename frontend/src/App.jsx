@@ -15,6 +15,7 @@ import AdminDashboard from './pages/Admin/AdminDashboard';
 import SuperAdminDashboard from './pages/SuperAdmin/SuperAdminDashboard';
 import ChatBot from './pages/Chatbot'; 
 import Profile from './pages/Profile';
+import News from './pages/News';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -259,6 +260,11 @@ function App() {
           <Route 
             path="/superadmin-dashboard" 
             element={user?.role === 'super_admin' ? <SuperAdminDashboard user={user} /> : <Navigate to="/" replace />} 
+          />
+
+          <Route 
+            path="/news" 
+            element={user?.role === 'user' ? <News user={user} /> : <Navigate to="/" replace />} 
           />
 
           {/* Fallback - 404 handling */}
