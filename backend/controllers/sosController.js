@@ -483,58 +483,121 @@ exports.getDepartmentStats = async (req, res) => {
 };
 
 // Update alert status
+// Update alert status - FIXED VERSION
 exports.updateAlertStatus = async (req, res) => {
   try {
     const { alertId } = req.params;
-    const { status, notes, department, adminId } = req.body;
+    const { status, notes, department, adminId, adminName } = req.body;
+
+    console.log('🔧 Updating alert status:', { alertId, status, department, adminId });
 
     const alert = await SOSAlert.findById(alertId);
     if (!alert) {
-      return res.status(404).json({ error: "Alert not found" });
+      return res.status(404).json({ 
+        success: false,
+        error: "Alert not found" 
+      });
     }
 
-    // Verify admin is from the department (if adminId provided)
-    const adminInfo = adminId
-      ? { id: adminId, name: req.body.adminName }
+    // Prepare admin info
+    const adminInfo = adminId && adminName
+      ? { id: adminId, name: adminName }
       : null;
 
-    // Update department-specific status
-    alert.updateDepartmentStatus(department, status, adminInfo);
+    // Handle main alert status transitions (pending → verified → assigned → in_progress → resolved)
+    const mainStatusTransitions = ['pending', 'verified', 'assigned', 'in_progress', 'resolved', 'cancelled'];
+    
+    if (mainStatusTransitions.includes(status)) {
+      console.log('✅ Updating main alert status:', status);
+      
+      // Update the main alert status
+      alert.status = status;
+      
+      // Update response metrics based on status
+      if (status === 'verified' && !alert.responseMetrics.firstViewedAt) {
+        alert.responseMetrics.firstViewedAt = new Date();
+        alert.responseMetrics.firstViewedBy = adminName || 'Admin';
+        alert.verified = true;
+      }
+      
+      if (status === 'assigned' && !alert.responseMetrics.acknowledgedAt) {
+        alert.responseMetrics.acknowledgedAt = new Date();
+        alert.responseMetrics.acknowledgedBy = adminName || 'Admin';
+      }
+      
+      if (status === 'in_progress' && !alert.responseMetrics.firstResponseAt) {
+        alert.responseMetrics.firstResponseAt = new Date();
+      }
+      
+      if (status === 'resolved' && !alert.responseMetrics.resolvedAt) {
+        alert.responseMetrics.resolvedAt = new Date();
+        alert.responseMetrics.resolvedBy = adminName || 'Admin';
+        
+        // Update user trust score
+        await Profile.findOneAndUpdate(
+          { userId: alert.userId },
+          {
+            $inc: { trustScore: 2 },
+            $max: { trustScore: 100 }
+          }
+        );
+      }
+      
+      // Update department-specific status to match main status
+      if (department) {
+        const deptStatusMapping = {
+          'pending': 'pending',
+          'verified': 'acknowledged',
+          'assigned': 'acknowledged',
+          'in_progress': 'responding',
+          'resolved': 'completed',
+          'cancelled': 'transferred'
+        };
+        
+        const deptStatus = deptStatusMapping[status] || 'pending';
+        alert.updateDepartmentStatus(department, deptStatus, adminInfo);
+      }
+    } else {
+      // Handle department-specific status (acknowledged, responding, completed, etc.)
+      console.log('✅ Updating department status:', status);
+      if (department) {
+        alert.updateDepartmentStatus(department, status, adminInfo);
+      }
+    }
 
     // Add note if provided
-    if (notes) {
-      alert.addNote(department, notes, adminInfo?.name || "System");
+    if (notes && department) {
+      alert.addNote(department, notes, adminName || 'System');
     }
 
-    // Update user trust score based on alert resolution
-    if (status === "resolved") {
-      await Profile.findOneAndUpdate(
-        { userId: alert.userId },
-        {
-          $inc: { trustScore: 2 }, // Increase trust score
-          $min: { trustScore: 100 }, // Cap at 100
-        }
-      );
-    }
-
+    // Save the alert
     await alert.save();
+    
+    console.log('✅ Alert updated successfully');
+
+    // Prepare response
+    const deptAssignment = department 
+      ? alert.assignedDepartments.find(d => d.department === department)
+      : null;
 
     res.json({
       success: true,
-      message: "Alert status updated",
+      message: "Alert status updated successfully",
       alert: {
         _id: alert._id,
         status: alert.status,
-        departmentStatus: alert.assignedDepartments.find(
-          (d) => d.department === department
-        ),
-      },
+        verified: alert.verified,
+        departmentStatus: deptAssignment?.status,
+        updatedAt: alert.updatedAt
+      }
     });
   } catch (error) {
-    console.error("Error updating alert:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to update alert", details: error.message });
+    console.error("❌ Error updating alert:", error);
+    res.status(500).json({ 
+      success: false,
+      error: "Failed to update alert", 
+      message: error.message 
+    });
   }
 };
 

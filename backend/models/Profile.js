@@ -59,6 +59,39 @@ const profileSchema = new mongoose.Schema({
     enum: ['user', 'department_admin', 'admin', 'super_admin'], // Added super_admin
     default: 'user'
   },
+    // Volunteer-specific fields
+  isVolunteer: {
+    type: Boolean,
+    default: false
+  },
+  volunteerSkills: {
+    type: [String],
+    default: []
+  },
+  availability: {
+    status: {
+      type: String,
+      enum: ['available', 'busy', 'unavailable'],
+      default: 'unavailable'
+    },
+    schedule: {
+      type: Object,
+      default: {}
+    }
+  },
+  certifications: {
+    type: [String],
+    default: []
+  },
+  experience: {
+    type: String,
+    trim: true
+  },
+  preferredTasks: {
+    type: [String],
+    default: []
+  },
+
   // Add department field
   department: {
     type: String,
@@ -99,5 +132,8 @@ profileSchema.pre('save', function(next) {
 
 profileSchema.index({ userId: 1 });
 profileSchema.index({ email: 1 });
+profileSchema.index({ isVolunteer: 1 });
+profileSchema.index({ 'availability.status': 1 });
+
 
 module.exports = mongoose.model('Profile', profileSchema);

@@ -12,22 +12,66 @@ const Profile = ({ user, setUser }) => {
     emergencyContacts: [
       { name: '', relationship: '', phone: '' },
       { name: '', relationship: '', phone: '' }
-    ]
+    ],
+    isVolunteer: false,
+    volunteerSkills: [],
+    availability: {
+      status: 'available',
+      schedule: {}
+    },
+    certifications: [],
+    experience: '',
+    preferredTasks: []
   });
   const [loading, setLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [backendAvailable, setBackendAvailable] = useState(true);
 
-  // API URL - change this if your backend is on a different URL
-  const API_BASE_URL = 'http://localhost:5002/api';
-
+  // Get API URL from environment or use default
+  
+const API_BASE_URL = 'http://localhost:5002/api';
   const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
   const relationships = ['Parent', 'Sibling', 'Spouse', 'Child', 'Friend', 'Relative', 'Colleague', 'Other'];
+  
+  const volunteerSkillsOptions = [
+    'First Aid/CPR',
+    'Medical Training',
+    'Construction',
+    'Cooking',
+    'Driving',
+    'Logistics',
+    'Counseling',
+    'Search & Rescue',
+    'Communication',
+    'Technical Support',
+    'Language Translation',
+    'Child Care',
+    'Elderly Care',
+    'Animal Rescue',
+    'Heavy Equipment',
+    'Electrical Work',
+    'Plumbing',
+    'Carpentry'
+  ];
 
-  // Check if backend is available
+  const preferredTasksOptions = [
+    'Emergency Department',
+    'Medical & Health',
+    'Infrastructure',
+    'Relief & Shelter',
+    'Environment',
+    'Community Support'
+  ];
+
+  const availabilityStatusOptions = [
+    { value: 'available', label: 'Available', color: 'bg-green-500' },
+    { value: 'busy', label: 'Busy', color: 'bg-yellow-500' },
+    { value: 'unavailable', label: 'Unavailable', color: 'bg-red-500' }
+  ];
+
   const checkBackendAvailability = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      const response = await fetch('http://localhost:5002/api/health', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -40,7 +84,6 @@ const Profile = ({ user, setUser }) => {
     }
   };
 
-  // Fetch profile from MongoDB backend
   const fetchProfile = async (userId) => {
     try {
       setLoading(true);
@@ -55,7 +98,6 @@ const Profile = ({ user, setUser }) => {
       const response = await fetch(`${API_BASE_URL}/profile/${userId}`);
       
       if (response.status === 404) {
-        // Profile doesn't exist yet - this is normal for new users
         console.log('Profile not found in backend (new user)');
         return null;
       }
@@ -80,7 +122,6 @@ const Profile = ({ user, setUser }) => {
     }
   };
 
-  // Save profile to MongoDB backend
   const saveProfile = async (userId, profileData) => {
     try {
       setSaveLoading(true);
@@ -89,7 +130,7 @@ const Profile = ({ user, setUser }) => {
 
       if (!isBackendUp) {
         return { 
-          success: true, // Treat as success for local storage
+          success: true,
           message: 'Profile saved locally (backend unavailable)' 
         };
       }
@@ -101,7 +142,7 @@ const Profile = ({ user, setUser }) => {
         },
         body: JSON.stringify({
           ...profileData,
-          userId: userId // Ensure userId is included
+          userId: userId
         })
       });
       
@@ -115,7 +156,7 @@ const Profile = ({ user, setUser }) => {
       console.error('Error saving profile:', error);
       setBackendAvailable(false);
       return { 
-        success: true, // Treat as success for local storage
+        success: true,
         message: 'Profile saved locally (server error)' 
       };
     } finally {
@@ -123,7 +164,6 @@ const Profile = ({ user, setUser }) => {
     }
   };
 
-  // Load profile data when component mounts or user changes
   useEffect(() => {
     const loadProfile = async () => {
       if (user?.id) {
@@ -131,7 +171,6 @@ const Profile = ({ user, setUser }) => {
         const profileData = await fetchProfile(user.id);
         
         if (profileData) {
-          // Profile exists in MongoDB
           setFormData({
             name: profileData.name || user.name || '',
             email: profileData.email || user.email || '',
@@ -144,10 +183,18 @@ const Profile = ({ user, setUser }) => {
               : [
                   { name: '', relationship: '', phone: '' },
                   { name: '', relationship: '', phone: '' }
-                ]
+                ],
+            isVolunteer: profileData.isVolunteer || false,
+            volunteerSkills: profileData.volunteerSkills || [],
+            availability: profileData.availability || {
+              status: 'available',
+              schedule: {}
+            },
+            certifications: profileData.certifications || [],
+            experience: profileData.experience || '',
+            preferredTasks: profileData.preferredTasks || []
           });
         } else {
-          // No profile in MongoDB, use Firebase user data
           console.log('Using Firebase user data as fallback');
           setFormData({
             name: user.name || '',
@@ -159,7 +206,16 @@ const Profile = ({ user, setUser }) => {
             emergencyContacts: user.emergencyContacts || [
               { name: '', relationship: '', phone: '' },
               { name: '', relationship: '', phone: '' }
-            ]
+            ],
+            isVolunteer: user.isVolunteer || false,
+            volunteerSkills: user.volunteerSkills || [],
+            availability: user.availability || {
+              status: 'available',
+              schedule: {}
+            },
+            certifications: user.certifications || [],
+            experience: user.experience || '',
+            preferredTasks: user.preferredTasks || []
           });
         }
       }
@@ -171,8 +227,54 @@ const Profile = ({ user, setUser }) => {
   }, [user]);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({ 
+      ...prev, 
+      [name]: type === 'checkbox' ? checked : value 
+    }));
+  };
+
+  const handleVolunteerToggle = (e) => {
+    const isChecked = e.target.checked;
+    setFormData(prev => ({ 
+      ...prev, 
+      isVolunteer: isChecked,
+      ...(isChecked ? {} : {
+        volunteerSkills: [],
+        availability: { status: 'available', schedule: {} },
+        certifications: [],
+        experience: '',
+        preferredTasks: []
+      })
+    }));
+  };
+
+  const handleSkillToggle = (skill) => {
+    setFormData(prev => ({
+      ...prev,
+      volunteerSkills: prev.volunteerSkills.includes(skill)
+        ? prev.volunteerSkills.filter(s => s !== skill)
+        : [...prev.volunteerSkills, skill]
+    }));
+  };
+
+  const handleTaskToggle = (task) => {
+    setFormData(prev => ({
+      ...prev,
+      preferredTasks: prev.preferredTasks.includes(task)
+        ? prev.preferredTasks.filter(t => t !== task)
+        : [...prev.preferredTasks, task]
+    }));
+  };
+
+  const handleAvailabilityChange = (status) => {
+    setFormData(prev => ({
+      ...prev,
+      availability: {
+        ...prev.availability,
+        status
+      }
+    }));
   };
 
   const handleEmergencyContactChange = (index, field, value) => {
@@ -209,19 +311,17 @@ const Profile = ({ user, setUser }) => {
     const saveResult = await saveProfile(user.id, formData);
     
     if (saveResult.success) {
-      // Update local user state with new profile data
       if (typeof setUser === 'function') {
         setUser({ ...user, ...formData });
       }
       setIsEditing(false);
-      alert('Profile updated successfully! ' + (saveResult.message || ''));
+      alert(`Profile updated successfully! ${saveResult.message || ''}`);
     } else {
-      alert('Failed to update profile: ' + (saveResult.message || 'Unknown error'));
+      alert(`Failed to update profile: ${saveResult.message || 'Unknown error'}`);
     }
   };
 
   const handleCancel = () => {
-    // Reload original data from backend
     if (user?.id) {
       fetchProfile(user.id).then(profileData => {
         if (profileData) {
@@ -235,10 +335,18 @@ const Profile = ({ user, setUser }) => {
             emergencyContacts: profileData.emergencyContacts || [
               { name: '', relationship: '', phone: '' },
               { name: '', relationship: '', phone: '' }
-            ]
+            ],
+            isVolunteer: profileData.isVolunteer || false,
+            volunteerSkills: profileData.volunteerSkills || [],
+            availability: profileData.availability || {
+              status: 'available',
+              schedule: {}
+            },
+            certifications: profileData.certifications || [],
+            experience: profileData.experience || '',
+            preferredTasks: profileData.preferredTasks || []
           });
         } else {
-          // If no backend data, reset to current user data
           setFormData({
             name: user.name || '',
             email: user.email || '',
@@ -249,7 +357,16 @@ const Profile = ({ user, setUser }) => {
             emergencyContacts: user.emergencyContacts || [
               { name: '', relationship: '', phone: '' },
               { name: '', relationship: '', phone: '' }
-            ]
+            ],
+            isVolunteer: user.isVolunteer || false,
+            volunteerSkills: user.volunteerSkills || [],
+            availability: user.availability || {
+              status: 'available',
+              schedule: {}
+            },
+            certifications: user.certifications || [],
+            experience: user.experience || '',
+            preferredTasks: user.preferredTasks || []
           });
         }
       });
@@ -269,8 +386,7 @@ const Profile = ({ user, setUser }) => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 max-w-4xl">
-      {/* Backend Status Indicator */}
+    <div className="container mx-auto px-4 py-6 max-w-6xl">
       {!backendAvailable && (
         <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500 rounded-lg">
           <div className="flex items-center">
@@ -327,64 +443,88 @@ const Profile = ({ user, setUser }) => {
 
       <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
         <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div className="lg:col-span-2">
               <h2 className="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Personal Information</h2>
               
-              <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Full Name *</label>
-                {isEditing ? (
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                    disabled={saveLoading}
-                  />
-                ) : (
-                  <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[42px] flex items-center">
-                    {formData.name || 'Not provided'}
-                  </div>
-                )}
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Email Address *</label>
-                {isEditing ? (
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                    disabled={saveLoading}
-                  />
-                ) : (
-                  <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[42px] flex items-center">
-                    {formData.email || 'Not provided'}
-                  </div>
-                )}
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Phone Number</label>
-                {isEditing ? (
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={saveLoading}
-                  />
-                ) : (
-                  <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[42px] flex items-center">
-                    {formData.phone || 'Not provided'}
-                  </div>
-                )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="mb-4">
+                  <label className="block text-gray-300 mb-2">Full Name *</label>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                      disabled={saveLoading}
+                    />
+                  ) : (
+                    <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[42px] flex items-center">
+                      {formData.name || 'Not provided'}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-gray-300 mb-2">Email Address *</label>
+                  {isEditing ? (
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                      disabled={saveLoading}
+                    />
+                  ) : (
+                    <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[42px] flex items-center">
+                      {formData.email || 'Not provided'}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-gray-300 mb-2">Phone Number</label>
+                  {isEditing ? (
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={saveLoading}
+                    />
+                  ) : (
+                    <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[42px] flex items-center">
+                      {formData.phone || 'Not provided'}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-gray-300 mb-2">Blood Group</label>
+                  {isEditing ? (
+                    <select
+                      name="bloodGroup"
+                      value={formData.bloodGroup}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={saveLoading}
+                    >
+                      <option value="">Select Blood Group</option>
+                      {bloodGroups.map(group => (
+                        <option key={group} value={group}>{group}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[42px] flex items-center">
+                      {formData.bloodGroup || 'Not provided'}
+                    </div>
+                  )}
+                </div>
               </div>
               
               <div className="mb-4">
@@ -401,32 +541,6 @@ const Profile = ({ user, setUser }) => {
                 ) : (
                   <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[60px] flex items-center whitespace-pre-line">
                     {formData.address || 'Not provided'}
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div>
-              <h2 className="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Medical Information</h2>
-              
-              <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Blood Group</label>
-                {isEditing ? (
-                  <select
-                    name="bloodGroup"
-                    value={formData.bloodGroup}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={saveLoading}
-                  >
-                    <option value="">Select Blood Group</option>
-                    {bloodGroups.map(group => (
-                      <option key={group} value={group}>{group}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[42px] flex items-center">
-                    {formData.bloodGroup || 'Not provided'}
                   </div>
                 )}
               </div>
@@ -449,6 +563,169 @@ const Profile = ({ user, setUser }) => {
                   </div>
                 )}
               </div>
+            </div>
+            
+            <div>
+              <h2 className="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Volunteer Registration</h2>
+              
+              <div className="mb-4">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  {isEditing ? (
+                    <input
+                      type="checkbox"
+                      name="isVolunteer"
+                      checked={formData.isVolunteer}
+                      onChange={handleVolunteerToggle}
+                      className="w-5 h-5 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
+                      disabled={saveLoading}
+                    />
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={formData.isVolunteer}
+                      className="w-5 h-5 text-blue-600 bg-gray-700 border-gray-600 rounded"
+                      disabled
+                    />
+                  )}
+                  <div>
+                    <span className="text-lg font-medium text-white">Register as Volunteer</span>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Join our disaster response team and help your community
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {formData.isVolunteer && (
+                <div className="space-y-4 mt-4 p-4 bg-gray-750 rounded-lg border border-gray-600">
+                  <div>
+                    <label className="block text-gray-300 mb-2">Current Availability</label>
+                    {isEditing ? (
+                      <div className="flex space-x-2">
+                        {availabilityStatusOptions.map(status => (
+                          <button
+                            key={status.value}
+                            type="button"
+                            onClick={() => handleAvailabilityChange(status.value)}
+                            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                              formData.availability.status === status.value
+                                ? `${status.color} text-white`
+                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            }`}
+                          >
+                            {status.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex space-x-2">
+                        {availabilityStatusOptions.map(status => (
+                          <span
+                            key={status.value}
+                            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium text-center ${
+                              formData.availability.status === status.value
+                                ? `${status.color} text-white`
+                                : 'bg-gray-700 text-gray-300'
+                            }`}
+                          >
+                            {status.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {isEditing && (
+                    <div>
+                      <label className="block text-gray-300 mb-2">Skills & Expertise</label>
+                      <div className="max-h-48 overflow-y-auto bg-gray-700 rounded-md p-3">
+                        <div className="grid grid-cols-1 gap-2">
+                          {volunteerSkillsOptions.map(skill => (
+                            <label key={skill} className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={formData.volunteerSkills.includes(skill)}
+                                onChange={() => handleSkillToggle(skill)}
+                                className="w-4 h-4 text-blue-600 bg-gray-600 border-gray-500 rounded focus:ring-blue-500"
+                              />
+                              <span className="text-sm text-gray-300">{skill}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {isEditing && (
+                    <div>
+                      <label className="block text-gray-300 mb-2">Preferred Tasks</label>
+                      <div className="max-h-32 overflow-y-auto bg-gray-700 rounded-md p-3">
+                        <div className="grid grid-cols-1 gap-2">
+                          {preferredTasksOptions.map(task => (
+                            <label key={task} className="flex items-center space-x-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={formData.preferredTasks.includes(task)}
+                                onChange={() => handleTaskToggle(task)}
+                                className="w-4 h-4 text-blue-600 bg-gray-600 border-gray-500 rounded focus:ring-blue-500"
+                              />
+                              <span className="text-sm text-gray-300">{task}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-gray-300 mb-2">Experience & Certifications</label>
+                    {isEditing ? (
+                      <textarea
+                        name="experience"
+                        value={formData.experience}
+                        onChange={handleChange}
+                        rows="3"
+                        placeholder="Describe your relevant experience, training, or certifications..."
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        disabled={saveLoading}
+                      />
+                    ) : (
+                      <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[60px] text-sm whitespace-pre-line">
+                        {formData.experience || 'Not provided'}
+                      </div>
+                    )}
+                  </div>
+
+                  {!isEditing && (
+                    <>
+                      {formData.volunteerSkills.length > 0 && (
+                        <div>
+                          <label className="block text-gray-300 mb-2 text-sm">Skills</label>
+                          <div className="flex flex-wrap gap-1">
+                            {formData.volunteerSkills.map(skill => (
+                              <span key={skill} className="px-2 py-1 bg-blue-600 text-white text-xs rounded-full">
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {formData.preferredTasks.length > 0 && (
+                        <div>
+                          <label className="block text-gray-300 mb-2 text-sm">Preferred Tasks</label>
+                          <div className="flex flex-wrap gap-1">
+                            {formData.preferredTasks.map(task => (
+                              <span key={task} className="px-2 py-1 bg-green-600 text-white text-xs rounded-full">
+                                {task}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           
@@ -579,11 +856,10 @@ const Profile = ({ user, setUser }) => {
         </form>
       </div>
 
-      {/* Account Information Section (Non-editable) */}
       <div className="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg mt-6">
         <h2 className="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Account Information</h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div>
             <label className="block text-gray-300 mb-2">User ID</label>
             <div className="px-3 py-2 bg-gray-700 rounded-md text-sm font-mono min-h-[42px] flex items-center">
@@ -599,9 +875,18 @@ const Profile = ({ user, setUser }) => {
           </div>
           
           <div>
-            <label className="block text-gray-300 mb-2">Member Since</label>
+            <label className="block text-gray-300 mb-2">Volunteer Status</label>
             <div className="px-3 py-2 bg-gray-700 rounded-md min-h-[42px] flex items-center">
-              {user?.joinDate || new Date().toLocaleDateString()}
+              {formData.isVolunteer ? (
+                <span className="flex items-center text-green-400">
+                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Registered Volunteer
+                </span>
+              ) : (
+                <span className="text-gray-400">Not Registered</span>
+              )}
             </div>
           </div>
           
@@ -620,21 +905,16 @@ const Profile = ({ user, setUser }) => {
         </div>
       </div>
 
-      {/* Storage Info */}
       <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500 rounded-lg">
         <h4 className="text-sm font-medium text-blue-300 mb-1">Profile Storage:</h4>
         <p className="text-xs text-blue-400">
-          {backendAvailable 
-            ? 'Your profile data is securely stored in MongoDB Cloud database.' 
-            : 'Using local storage (backend unavailable)'}
-          {API_BASE_URL.includes('localhost') && ' (Backend: Localhost:5000)'}
+          
         </p>
       </div>
     </div>
   );
 };
 
-// Add default props to prevent errors
 Profile.defaultProps = {
   user: {},
   setUser: () => console.warn('setUser function not provided - profile will be saved locally only')

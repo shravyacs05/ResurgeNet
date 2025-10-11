@@ -36,6 +36,7 @@ exports.getAllReports = async (req, res) => {
       query.$or = [
         { location: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
+        { reporterName: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -141,6 +142,7 @@ exports.updateReport = async (req, res) => {
   }
 };
 
+// User verification (existing functionality)
 exports.verifyReport = async (req, res) => {
   try {
     const userId = req.body.userId;
@@ -175,10 +177,10 @@ exports.verifyReport = async (req, res) => {
     report.verifiedBy.push({ user: userIdStr });
     report.verifications = report.verifiedBy.length;
 
-    if (report.verifications >= 10) {
-      report.verified = false;
-      report.needsAdminApproval = true;
-      // TODO: Implement admin notification mechanism
+    // Auto-verify if enough user verifications
+    if (report.verifications >= report.autoVerifyThreshold) {
+      report.verified = true;
+      report.needsAdminApproval = false;
     }
 
     await report.save();
@@ -190,8 +192,107 @@ exports.verifyReport = async (req, res) => {
   }
 };
 
+// ADMIN VERIFICATION - Direct verification by admin
+exports.adminVerifyReport = async (req, res) => {
+  try {
+    const adminId = req.body.adminId || req.user?.id;
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'Admin ID is required' });
+    }
+
+    const report = await RoadReport.findById(req.params.id);
+
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    // Check if admin already verified
+    const adminAlreadyVerified = report.verifiedBy.some(v => 
+      v.user === 'department_admin' || v.user.includes('department_admin') || v.user === adminId
+    );
+
+    if (adminAlreadyVerified) {
+      return res.status(400).json({ success: false, message: 'Admin has already verified this report' });
+    }
+
+    // Add admin verification
+    report.verifiedBy.push({ 
+      user: `admin_${adminId}`,
+      verifiedAt: new Date()
+    });
+    
+    // Direct verification by admin
+    report.verified = true;
+    report.needsAdminApproval = false;
+    report.verifications = report.verifiedBy.length;
+
+    await report.save();
+
+    console.log(`✅ Admin ${adminId} verified report: ${report._id}`);
+
+    return res.json({ 
+      success: true, 
+      message: 'Report verified by admin', 
+      data: report 
+    });
+  } catch (error) {
+    console.error('Admin verify report error:', error);
+    res.status(500).json({ success: false, message: 'Error verifying report as admin', error: error.message });
+  }
+};
+
+// ADMIN TOGGLE VERIFICATION - Toggle verification status directly
+exports.adminToggleVerification = async (req, res) => {
+  try {
+    const adminId = req.body.adminId || req.user?.id;
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: 'Admin ID is required' });
+    }
+
+    const report = await RoadReport.findById(req.params.id);
+
+    if (!report) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    // Toggle verification status
+    report.verified = !report.verified;
+    
+    // Add admin action to verifiedBy if verifying
+    if (report.verified) {
+      const adminAlreadyVerified = report.verifiedBy.some(v => 
+        v.user === 'admin' || v.user.includes('admin') || v.user === adminId
+      );
+      
+      if (!adminAlreadyVerified) {
+        report.verifiedBy.push({ 
+          user: `admin_${adminId}`,
+          verifiedAt: new Date()
+        });
+        report.verifications = report.verifiedBy.length;
+      }
+    }
+
+    report.needsAdminApproval = false;
+
+    await report.save();
+
+    console.log(`✅ Admin ${adminId} ${report.verified ? 'verified' : 'unverified'} report: ${report._id}`);
+
+    return res.json({ 
+      success: true, 
+      message: `Report ${report.verified ? 'verified' : 'unverified'} by admin`, 
+      data: report 
+    });
+  } catch (error) {
+    console.error('Admin toggle verification error:', error);
+    res.status(500).json({ success: false, message: 'Error toggling verification', error: error.message });
+  }
+};
+
 exports.toggleCritical = async (req, res) => {
   try {
+    const { markedCriticalBy } = req.body;
     const report = await RoadReport.findById(req.params.id);
 
     if (!report) {
@@ -200,10 +301,18 @@ exports.toggleCritical = async (req, res) => {
 
     report.critical = !report.critical;
     report.criticalMarkedAt = new Date();
+    
+    if (markedCriticalBy) {
+      report.markedCriticalBy = markedCriticalBy;
+    }
 
     await report.save();
 
-    res.json({ success: true, message: `Report marked as ${report.critical ? 'critical' : 'normal'}`, data: report });
+    res.json({ 
+      success: true, 
+      message: `Report marked as ${report.critical ? 'critical' : 'normal'}`, 
+      data: report 
+    });
   } catch (error) {
     console.error('Toggle critical error:', error);
     res.status(500).json({ success: false, message: 'Error toggling critical status', error: error.message });
@@ -212,7 +321,7 @@ exports.toggleCritical = async (req, res) => {
 
 exports.resolveReport = async (req, res) => {
   try {
-    const { resolutionNotes } = req.body;
+    const { resolutionNotes, resolvedBy } = req.body;
     const report = await RoadReport.findById(req.params.id);
 
     if (!report) {
@@ -222,6 +331,10 @@ exports.resolveReport = async (req, res) => {
     report.status = 'resolved';
     report.resolvedAt = new Date();
     report.resolutionNotes = resolutionNotes || '';
+    
+    if (resolvedBy) {
+      report.resolvedBy = resolvedBy;
+    }
 
     await report.save();
 
@@ -248,5 +361,53 @@ exports.deleteReport = async (req, res) => {
   } catch (error) {
     console.error('Delete report error:', error);
     res.status(500).json({ success: false, message: 'Error deleting report', error: error.message });
+  }
+};
+
+// Get reports needing admin approval
+exports.getReportsNeedingApproval = async (req, res) => {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+
+    const reports = await RoadReport.find({
+      isActive: true,
+      $or: [
+        { needsAdminApproval: true },
+        { verifications: { $gte: 10 } },
+        { critical: true }
+      ]
+    })
+    .sort('-createdAt')
+    .limit(parseInt(limit, 10))
+    .skip(skip)
+    .lean();
+
+    const total = await RoadReport.countDocuments({
+      isActive: true,
+      $or: [
+        { needsAdminApproval: true },
+        { verifications: { $gte: 10 } },
+        { critical: true }
+      ]
+    });
+
+    const reportsWithTime = reports.map(r => ({
+      ...r,
+      time: getTimeAgo(r.createdAt),
+    }));
+
+    res.json({
+      success: true,
+      count: reports.length,
+      total,
+      page: parseInt(page, 10),
+      pages: Math.ceil(total / parseInt(limit, 10)),
+      data: reportsWithTime,
+    });
+  } catch (error) {
+    console.error('Get reports needing approval error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching reports', error: error.message });
   }
 };

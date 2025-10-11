@@ -1,4 +1,56 @@
 import React, { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix for default markers in react-leaflet
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+// Custom marker icons for different report types
+const blockedIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  iconRetinaUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+const clearIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  iconRetinaUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+const criticalIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
+  iconRetinaUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+// Component for handling map clicks
+function MapClickHandler({ onMapClick }) {
+  useMapEvents({
+    click: (e) => {
+      onMapClick(e);
+    },
+  });
+  return null;
+}
 
 const API_URL = 'http://localhost:5002/api/road-reports';
 
@@ -8,15 +60,23 @@ const RoadReports = ({ user }) => {
   const [error, setError] = useState(null);
   const [showReportForm, setShowReportForm] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [mapCoordinates, setMapCoordinates] = useState({ lat: null, lng: null });
+  const [currentLocation, setCurrentLocation] = useState(null);
   const [newReport, setNewReport] = useState({
     type: 'blocked',
     location: '',
     description: '',
     critical: false,
+    coordinates: { lat: '', lng: '' }
   });
+
+  // Default center (New York)
+  const defaultCenter = [40.7128, -74.0060];
 
   useEffect(() => {
     fetchReports();
+    getCurrentLocation();
   }, []);
 
   const fetchReports = async () => {
@@ -34,10 +94,71 @@ const RoadReports = ({ user }) => {
     }
   };
 
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setCurrentLocation({ lat, lng });
+          
+          // If map picker is open, update the map coordinates
+          if (showMapPicker) {
+            setMapCoordinates({ lat, lng });
+          }
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          setError('Unable to get your location. Please select a location on the map.');
+        }
+      );
+    } else {
+      setError('Geolocation is not supported by this browser.');
+    }
+  };
+
+  // Open map for coordinate selection
+  const openMapPicker = () => {
+    setShowMapPicker(true);
+    // If we already have coordinates, use them as initial position
+    if (newReport.coordinates.lat && newReport.coordinates.lng) {
+      setMapCoordinates({
+        lat: parseFloat(newReport.coordinates.lat),
+        lng: parseFloat(newReport.coordinates.lng)
+      });
+    } else if (currentLocation) {
+      // Otherwise use current location if available
+      setMapCoordinates(currentLocation);
+    }
+  };
+
+  // Handle map click to select coordinates
+  const handleMapClick = (e) => {
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    setMapCoordinates({ lat, lng });
+    
+    // Update the form with selected coordinates
+    setNewReport(prev => ({
+      ...prev,
+      coordinates: { lat: lat.toString(), lng: lng.toString() }
+    }));
+  };
+
+  // Close map picker and apply coordinates
+  const applyMapSelection = () => {
+    setShowMapPicker(false);
+  };
+
+  // Cancel map selection
+  const cancelMapSelection = () => {
+    setShowMapPicker(false);
+  };
+
   const filteredReports = reports.filter((report) => {
     switch (activeTab) {
       case 'my-reports':
-        return report.reportedBy === user.name;
+        return report.reportedBy === user.id || report.reportedBy === user.name;
       case 'verified':
         return report.verified;
       case 'unverified':
@@ -53,7 +174,6 @@ const RoadReports = ({ user }) => {
       case 'active':
         return report.status === 'active';
       case 'admin-verified':
-        // Show reports that have admin verification (marked as verified by admin)
         return report.verified && report.verifiedBy?.some(v => 
           v.user === 'admin' || v.user.includes('admin')
         );
@@ -73,20 +193,39 @@ const RoadReports = ({ user }) => {
   const handleSubmitReport = async (e) => {
     e.preventDefault();
     try {
+      // Validate coordinates
+      if (!newReport.coordinates.lat || !newReport.coordinates.lng) {
+        alert('Please select a location on the map');
+        return;
+      }
+
       const reportData = {
         ...newReport,
-        reportedBy: user.name,
+        reportedBy: user.id,
         reporterName: user.name,
+        coordinates: {
+          lat: parseFloat(newReport.coordinates.lat),
+          lng: parseFloat(newReport.coordinates.lng)
+        }
       };
+
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reportData),
       });
+      
       if (!res.ok) throw new Error('Failed to submit report');
+      
       const data = await res.json();
       setReports([data.data, ...reports]);
-      setNewReport({ type: 'blocked', location: '', description: '', critical: false });
+      setNewReport({ 
+        type: 'blocked', 
+        location: '', 
+        description: '', 
+        critical: false,
+        coordinates: { lat: '', lng: '' }
+      });
       setShowReportForm(false);
       setActiveTab('my-reports');
     } catch (err) {
@@ -115,6 +254,13 @@ const RoadReports = ({ user }) => {
     try {
       const res = await fetch(`${API_URL}/${id}/critical`, {
         method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          critical: !isCritical,
+          markedCriticalBy: user.id 
+        }),
       });
       if (!res.ok) throw new Error('Failed to update critical status');
       const data = await res.json();
@@ -132,7 +278,8 @@ const RoadReports = ({ user }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          resolutionNotes: 'Resolved by user'
+          resolutionNotes: 'Resolved by user',
+          resolvedBy: user.id
         }),
       });
       if (!res.ok) throw new Error('Failed to resolve report');
@@ -145,7 +292,7 @@ const RoadReports = ({ user }) => {
 
   const reportCounts = {
     all: reports.length,
-    'my-reports': reports.filter(r => r.reportedBy === user.name).length,
+    'my-reports': reports.filter(r => r.reportedBy === user.id || r.reportedBy === user.name).length,
     verified: reports.filter(r => r.verified).length,
     unverified: reports.filter(r => !r.verified).length,
     critical: reports.filter(r => r.critical).length,
@@ -172,9 +319,93 @@ const RoadReports = ({ user }) => {
     return { hasVerified: userHasVerified, isAdminVerified: adminHasVerified };
   };
 
+  // Get appropriate icon for a report
+  const getReportIcon = (report) => {
+    if (report.critical) return criticalIcon;
+    return report.type === 'blocked' ? blockedIcon : clearIcon;
+  };
+
+  // Navigate to report location
+  const navigateToLocation = (report) => {
+    if (report.coordinates && report.coordinates.lat && report.coordinates.lng) {
+      const { lat, lng } = report.coordinates;
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+      window.open(url, '_blank');
+    } else {
+      alert('No coordinates available for navigation');
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div className="px-4 py-6 sm:px-0">
+        
+        {/* Map Picker Modal */}
+        {showMapPicker && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg w-full max-w-6xl h-[80vh] flex flex-col">
+              <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 className="text-lg font-medium text-white">Select Road Location</h3>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={getCurrentLocation}
+                    className="bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-md text-white text-sm transition-colors"
+                  >
+                    Use My Location
+                  </button>
+                  <button
+                    onClick={cancelMapSelection}
+                    className="bg-gray-600 hover:bg-gray-500 px-3 py-2 rounded-md text-white text-sm transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={applyMapSelection}
+                    className="bg-green-600 hover:bg-green-500 px-3 py-2 rounded-md text-white text-sm transition-colors"
+                    disabled={!mapCoordinates.lat}
+                  >
+                    Apply Location
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 p-4">
+                <div className="bg-gray-700 rounded-lg h-full overflow-hidden">
+                  <MapContainer
+                    center={mapCoordinates.lat ? [mapCoordinates.lat, mapCoordinates.lng] : defaultCenter}
+                    zoom={13}
+                    style={{ height: '100%', width: '100%' }}
+                    className="rounded-lg"
+                  >
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+                    <MapClickHandler onMapClick={handleMapClick} />
+                    {mapCoordinates.lat && (
+                      <Marker 
+                        position={[mapCoordinates.lat, mapCoordinates.lng]} 
+                        icon={newReport.type === 'blocked' ? blockedIcon : clearIcon}
+                      />
+                    )}
+                  </MapContainer>
+                </div>
+              </div>
+              <div className="p-4 border-t border-gray-700 bg-gray-900">
+                <div className="text-sm text-gray-300">
+                  <p className="mb-2">Click on the map to select the road location. A marker will appear at your selected position.</p>
+                  {mapCoordinates.lat ? (
+                    <p className="text-green-400">
+                      Selected Location: {mapCoordinates.lat.toFixed(6)}, {mapCoordinates.lng.toFixed(6)}
+                    </p>
+                  ) : (
+                    <p className="text-yellow-400">No location selected yet. Click on the map to choose a location.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-white">Road Condition Reports</h2>
           <button
@@ -204,7 +435,7 @@ const RoadReports = ({ user }) => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300">Location</label>
+                  <label className="block text-sm font-medium text-gray-300">Location Description</label>
                   <input
                     type="text"
                     name="location"
@@ -212,8 +443,47 @@ const RoadReports = ({ user }) => {
                     onChange={handleInputChange}
                     required
                     className="block w-full rounded-md border-gray-700 bg-gray-700 text-white"
-                    placeholder="Enter road name and area"
+                    placeholder="Enter road name, landmark, or area description"
                   />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-300">Location Coordinates *</label>
+                  <div className="flex space-x-4">
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={newReport.coordinates.lat || ''}
+                        readOnly
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-400"
+                        placeholder="Latitude (select from map)"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={newReport.coordinates.lng || ''}
+                        readOnly
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-400"
+                        placeholder="Longitude (select from map)"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openMapPicker}
+                      className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-white transition-colors whitespace-nowrap"
+                    >
+                      Select from Map
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Click "Select from Map" to choose the exact road location on an interactive map
+                  </p>
+                  {newReport.coordinates.lat && (
+                    <p className="text-sm text-green-400 mt-1">
+                      Location selected: {parseFloat(newReport.coordinates.lat).toFixed(6)}, {parseFloat(newReport.coordinates.lng).toFixed(6)}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -225,7 +495,7 @@ const RoadReports = ({ user }) => {
                     required
                     rows={3}
                     className="block w-full rounded-md border-gray-700 bg-gray-700 text-white"
-                    placeholder="Provide details about the road condition"
+                    placeholder="Provide details about the road condition, obstacles, damage, etc."
                   />
                 </div>
 
@@ -239,7 +509,7 @@ const RoadReports = ({ user }) => {
                     className="h-4 w-4 text-blue-600 border-gray-600 rounded"
                   />
                   <label htmlFor="critical" className="ml-2 block text-sm text-gray-300">
-                    Mark as critical (emergency situation)
+                    Mark as critical (emergency situation requiring immediate attention)
                   </label>
                 </div>
               </div>
@@ -247,7 +517,8 @@ const RoadReports = ({ user }) => {
               <div className="mt-6">
                 <button
                   type="submit"
-                  className="inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                  disabled={!newReport.coordinates.lat || !newReport.coordinates.lng}
+                  className="inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Submit Report
                 </button>
@@ -311,7 +582,7 @@ const RoadReports = ({ user }) => {
             <ul className="divide-y divide-gray-700">
               {filteredReports.map((report) => {
                 const { hasVerified, isAdminVerified } = getUserVerificationStatus(report);
-                const isMyReport = report.reportedBy === user.name;
+                const isMyReport = report.reportedBy === user.id || report.reportedBy === user.name;
                 
                 return (
                   <li key={report._id} className={report.critical ? 'bg-red-900 bg-opacity-20' : ''}>
@@ -341,6 +612,19 @@ const RoadReports = ({ user }) => {
                           <div className="ml-4">
                             <div className="flex items-center flex-wrap gap-2">
                               <h3 className="text-sm font-medium text-white">{report.location}</h3>
+                              {report.coordinates && (
+                                <button
+                                  onClick={() => navigateToLocation(report)}
+                                  className="inline-flex items-center px-2 py-1 rounded text-xs bg-blue-600 text-white hover:bg-blue-700"
+                                  title="Navigate to location"
+                                >
+                                  <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                  Navigate
+                                </button>
+                              )}
                               {report.critical && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                                   Critical
@@ -369,6 +653,13 @@ const RoadReports = ({ user }) => {
                             </div>
                             <p className="text-sm text-gray-400 mt-1">{report.description}</p>
                             
+                            {/* Show coordinates if available */}
+                            {report.coordinates && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Coordinates: {report.coordinates.lat?.toFixed(4)}, {report.coordinates.lng?.toFixed(4)}
+                              </p>
+                            )}
+                            
                             {/* Show resolution details if resolved */}
                             {report.status === 'resolved' && report.resolutionNotes && (
                               <div className="mt-2 p-2 bg-blue-900 bg-opacity-20 rounded">
@@ -385,8 +676,10 @@ const RoadReports = ({ user }) => {
                           </div>
                         </div>
                         <div className="flex flex-col items-end">
-                          <p className="text-sm text-gray-400">{report.time || 'Just now'}</p>
-                          <p className="text-xs text-gray-500">by {report.reportedBy}</p>
+                          <p className="text-sm text-gray-400">
+                            {report.createdAt ? new Date(report.createdAt).toLocaleDateString() : 'Just now'}
+                          </p>
+                          <p className="text-xs text-gray-500">by {report.reporterName}</p>
                         </div>
                       </div>
 
@@ -440,7 +733,7 @@ const RoadReports = ({ user }) => {
                           {user.role === 'admin' && (
                             <>
                               <button
-                                onClick={() => markAsCritical(report._id, !report.critical)}
+                                onClick={() => markAsCritical(report._id, report.critical)}
                                 className={`inline-flex items-center px-3 py-1 rounded-md text-xs font-medium ${
                                   report.critical ? 'bg-yellow-600 text-white' : 'bg-gray-600 text-white'
                                 }`}

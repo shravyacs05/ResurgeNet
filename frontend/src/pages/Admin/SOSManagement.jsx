@@ -5,6 +5,7 @@ const SOSManagement = ({ user, selectedDepartment, getAuthHeaders }) => {
   const [sosAlerts, setSosAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const API_BASE_URL = 'http://localhost:5002/api';
 
@@ -13,16 +14,41 @@ const SOSManagement = ({ user, selectedDepartment, getAuthHeaders }) => {
     { value: 'medical_health', label: 'Medical & Health' },
     { value: 'infrastructure', label: 'Infrastructure' },
     { value: 'relief_shelter', label: 'Relief & Shelter' },
-    { value: 'community_safety', label: 'Community Safety' }
+    { value: 'community_safety', label: 'Community Safety' },
+    { value: 'environment_hazards', label: 'Environment Hazards' },
+    { value: 'community_support', label: 'Community Support' }
   ];
+
+  // Status display helpers
+  const getStatusColor = (status) => {
+    if (!status) return 'bg-gray-100 text-gray-800';
+    
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'verified': return 'bg-blue-100 text-blue-800';
+      case 'assigned': return 'bg-purple-100 text-purple-800';
+      case 'in_progress': return 'bg-orange-100 text-orange-800';
+      case 'resolved': return 'bg-green-100 text-green-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatStatus = (status) => {
+    if (!status) return 'Unknown';
+    
+    if (status === 'in_progress') return 'In Progress';
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
 
   // Fetch SOS alerts
   const fetchSOSAlerts = async () => {
     try {
       setLoading(true);
       setError('');
+      setSuccess('');
       
-      console.log('Fetching alerts for department:', selectedDepartment);
+      console.log('🔍 Fetching alerts for department:', selectedDepartment);
       
       const response = await fetch(
         `${API_BASE_URL}/sos/department/${selectedDepartment}?status=active&limit=50`,
@@ -31,11 +57,16 @@ const SOSManagement = ({ user, selectedDepartment, getAuthHeaders }) => {
         }
       );
 
+      console.log('🔍 Fetch response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to fetch SOS alerts');
+        const errorData = await response.json();
+        console.error('🔍 Fetch error response:', errorData);
+        throw new Error(errorData.message || `Failed to fetch SOS alerts: ${response.status}`);
       }
 
       const result = await response.json();
+      console.log('🔍 Fetch successful, data:', result);
 
       if (result.success) {
         setSosAlerts(result.alerts || []);
@@ -43,7 +74,7 @@ const SOSManagement = ({ user, selectedDepartment, getAuthHeaders }) => {
         throw new Error(result.message || 'Failed to fetch SOS alerts');
       }
     } catch (err) {
-      console.error('Error fetching SOS alerts:', err);
+      console.error('❌ Error fetching SOS alerts:', err);
       setError(err.message || 'Failed to load SOS alerts');
       setSosAlerts([]);
     } finally {
@@ -51,43 +82,88 @@ const SOSManagement = ({ user, selectedDepartment, getAuthHeaders }) => {
     }
   };
 
-  // Update SOS status
-  const updateSOSStatus = async (alertId, newStatus) => {
+  // Update SOS status - FIXED VERSION
+  const updateSOSStatus = async (alertId, newStatus, currentAlert) => {
     try {
       setError('');
+      setSuccess('');
       
-      const response = await fetch(`${API_BASE_URL}/sos/${alertId}/status`, {
-        method: 'PATCH',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          status: newStatus,
-          department: selectedDepartment,
-          adminId: user?.uid,
-          adminName: user?.name
-        })
+      console.log('🔐 Updating SOS alert status:', {
+        alertId,
+        newStatus,
+        selectedDepartment,
+        currentAlert
       });
 
+      // Prepare update data
+      const updateData = {
+        status: newStatus,
+        department: selectedDepartment,
+        adminId: user?.uid || 'admin',
+        adminName: user?.name || 'Admin',
+        notes: `Status updated to ${newStatus} by ${user?.name || 'Admin'}`
+      };
+
+      console.log('🔐 Sending update data:', updateData);
+
+      const response = await fetch(`${API_BASE_URL}/sos/${alertId}/status`, {
+        method: 'PATCH',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updateData)
+      });
+
+      console.log('🔐 Response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to update SOS status');
+        const errorData = await response.json();
+        console.error('🔐 Server error response:', errorData);
+        throw new Error(errorData.message || `Failed to update SOS status: ${response.status}`);
       }
 
       const result = await response.json();
+      console.log('✅ SOS status update successful:', result);
 
       if (result.success) {
-        // Update local state
-        setSosAlerts(sosAlerts.map(alert => 
-          alert._id === alertId ? { ...alert, status: newStatus } : alert
-        ));
+        setSuccess(`Alert status updated to ${formatStatus(newStatus)} successfully!`);
         
-        // Refresh the list
-        fetchSOSAlerts();
+        // Update local state immediately for better UX
+        setSosAlerts(prevAlerts => 
+          prevAlerts.map(alert => 
+            alert._id === alertId ? { ...alert, status: newStatus } : alert
+          )
+        );
+        
+        // Refresh data to get the latest from server
+        setTimeout(() => {
+          fetchSOSAlerts();
+        }, 1000);
       } else {
         throw new Error(result.message || 'Failed to update SOS status');
       }
     } catch (err) {
-      console.error('Error updating SOS status:', err);
-      setError('Failed to update SOS status. Please try again.');
+      console.error('❌ Error updating SOS status:', err);
+      setError(err.message || 'Failed to update SOS status. Please try again.');
+      
+      // Revert local state on error
+      fetchSOSAlerts();
     }
+  };
+
+  // Get available status transitions based on current status
+  const getAvailableStatuses = (currentStatus) => {
+    const statusFlow = {
+      pending: ['verified', 'cancelled'],
+      verified: ['assigned', 'cancelled'],
+      assigned: ['in_progress', 'cancelled'],
+      in_progress: ['resolved', 'cancelled'],
+      resolved: [], // No further transitions from resolved
+      cancelled: [] // No further transitions from cancelled
+    };
+    
+    return statusFlow[currentStatus] || [];
   };
 
   // Format time ago
@@ -104,129 +180,192 @@ const SOSManagement = ({ user, selectedDepartment, getAuthHeaders }) => {
     return `${Math.floor(diffMinutes / 1440)} days ago`;
   };
 
-  // Get status color
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'verified': return 'bg-blue-100 text-blue-800';
-      case 'in_progress': return 'bg-purple-100 text-purple-800';
-      case 'resolved': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+  // Get department-specific status for an alert
+  const getDepartmentStatus = (alert) => {
+    if (!alert.assignedDepartments || !Array.isArray(alert.assignedDepartments)) {
+      return alert.status;
     }
+    
+    const deptAssignment = alert.assignedDepartments.find(
+      dept => dept.department === selectedDepartment
+    );
+    
+    return deptAssignment?.status || alert.status;
   };
 
   useEffect(() => {
-    fetchSOSAlerts();
+    if (selectedDepartment) {
+      fetchSOSAlerts();
+    }
   }, [selectedDepartment]);
+
+  // Auto-hide success message
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess('');
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   return (
     <div className="bg-gray-800 shadow overflow-hidden sm:rounded-md">
       <div className="px-4 py-4 bg-gray-700 flex justify-between items-center">
         <h3 className="text-lg font-medium text-white">
-          SOS Alerts - {departments.find(d => d.value === selectedDepartment)?.label}
+          SOS Alerts - {departments.find(d => d.value === selectedDepartment)?.label || selectedDepartment}
         </h3>
         <div className="flex space-x-2">
-          {loading && <span className="text-xs text-gray-400">Loading...</span>}
-          <select className="rounded-md border-gray-600 bg-gray-600 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500">
-            <option>All Types</option>
-            <option>Critical</option>
-            <option>High Priority</option>
-            <option>Medium Priority</option>
-          </select>
+          {loading && (
+            <span className="inline-flex items-center px-3 py-2 text-sm text-gray-400">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Loading...
+            </span>
+          )}
           <button 
             onClick={fetchSOSAlerts}
-            className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            disabled={loading}
+            className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
           >
+            <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
             Refresh
           </button>
         </div>
       </div>
       
+      {/* Status Messages */}
       {error && (
-        <div className="px-4 py-3 bg-red-900 text-red-200">
-          {error}
+        <div className="px-4 py-3 bg-red-900 text-red-200 flex justify-between items-center">
+          <span>{error}</span>
+          <button onClick={() => setError('')} className="text-red-400 hover:text-red-300">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 
+      {success && (
+        <div className="px-4 py-3 bg-green-900 text-green-200 flex justify-between items-center">
+          <span>{success}</span>
+          <button onClick={() => setSuccess('')} className="text-green-400 hover:text-green-300">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Alerts List */}
       <ul className="divide-y divide-gray-700">
-        {sosAlerts.map((alert) => (
-          <li key={alert._id}>
-            <div className="px-4 py-4 sm:px-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center flex-1">
-                  <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center ${
-                    alert.mlClassification?.urgencyLevel === 'critical' || alert.mlClassification?.urgencyLevel === 'high' ? 'bg-red-500' : 
-                    alert.mlClassification?.urgencyLevel === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
-                  }`}>
-                    <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                  <div className="ml-4 flex-1">
-                    <div className="flex items-center">
-                      <h3 className="text-sm font-medium text-white">
-                        {alert.userName} - {alert.emergencyType}
-                      </h3>
-                      <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(alert.status)}`}>
-                        {alert.status.charAt(0).toUpperCase() + alert.status.slice(1)}
-                      </span>
+        {sosAlerts.map((alert) => {
+          const deptStatus = getDepartmentStatus(alert);
+          const availableStatuses = getAvailableStatuses(deptStatus);
+          
+          return (
+            <li key={alert._id}>
+              <div className="px-4 py-4 sm:px-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center flex-1">
+                    <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center ${
+                      alert.mlClassification?.urgencyLevel === 'critical' ? 'bg-red-500' : 
+                      alert.mlClassification?.urgencyLevel === 'high' ? 'bg-orange-500' :
+                      alert.mlClassification?.urgencyLevel === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                    }`}>
+                      <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
                     </div>
-                    <p className="text-sm text-gray-400 mt-1">
-                      {alert.location?.address}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {formatTimeAgo(alert.createdAt)} • Priority: {alert.mlClassification?.urgencyLevel || 'medium'} • People: {alert.peopleAffected || 'N/A'}
-                    </p>
-                    <p className="text-sm text-gray-300 mt-2">
-                      {alert.message?.substring(0, 150)}{alert.message?.length > 150 ? '...' : ''}
-                    </p>
-                    {alert.mlClassification?.primaryDepartments && (
-                      <div className="mt-2">
-                        <p className="text-xs text-gray-400">Assigned to:</p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {alert.mlClassification.primaryDepartments.map(dept => (
-                            <span key={dept} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300">
-                              {dept.replace(/_/g, ' ')}
-                            </span>
-                          ))}
-                        </div>
+                    <div className="ml-4 flex-1">
+                      <div className="flex items-center">
+                        <h3 className="text-sm font-medium text-white">
+                          {alert.userName || 'Unknown User'} - {alert.emergencyType || 'Emergency'}
+                        </h3>
+                        <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(deptStatus)}`}>
+                          {formatStatus(deptStatus)}
+                        </span>
                       </div>
+                      <p className="text-sm text-gray-400 mt-1">
+                        {alert.location?.address || 'Location not specified'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formatTimeAgo(alert.createdAt)} • Priority: {alert.mlClassification?.urgencyLevel || 'medium'} • People: {alert.peopleAffected || 'N/A'}
+                      </p>
+                      <p className="text-sm text-gray-300 mt-2">
+                        {alert.message?.substring(0, 150)}{alert.message?.length > 150 ? '...' : ''}
+                      </p>
+                      
+                      {/* Department Assignments */}
+                      {alert.assignedDepartments && alert.assignedDepartments.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-xs text-gray-400">Department Status:</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {alert.assignedDepartments.map((dept, index) => (
+                              <span 
+                                key={index} 
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                  dept.department === selectedDepartment 
+                                    ? 'bg-blue-600 text-white' 
+                                    : 'bg-gray-700 text-gray-300'
+                                }`}
+                              >
+                                {dept.department.replace(/_/g, ' ')}: {formatStatus(dept.status)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <div className="flex flex-col space-y-2 ml-4">
+                    {availableStatuses.map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => updateSOSStatus(alert._id, status, alert)}
+                        disabled={loading}
+                        className={`inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white ${
+                          status === 'verified' ? 'bg-blue-600 hover:bg-blue-700' :
+                          status === 'assigned' ? 'bg-purple-600 hover:bg-purple-700' :
+                          status === 'in_progress' ? 'bg-orange-600 hover:bg-orange-700' :
+                          status === 'resolved' ? 'bg-green-600 hover:bg-green-700' :
+                          status === 'cancelled' ? 'bg-red-600 hover:bg-red-700' :
+                          'bg-gray-600 hover:bg-gray-700'
+                        } disabled:opacity-50`}
+                      >
+                        {status === 'verified' && <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                        {status === 'assigned' && <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>}
+                        {status === 'in_progress' && <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
+                        {status === 'resolved' && <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                        {status === 'cancelled' && <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>}
+                        {formatStatus(status)}
+                      </button>
+                    ))}
+                    
+                    {availableStatuses.length === 0 && (
+                      <span className="inline-flex items-center px-3 py-1 text-xs text-gray-400">
+                        No actions available
+                      </span>
                     )}
                   </div>
                 </div>
-                <div className="flex flex-col space-y-2 ml-4">
-                  {alert.status === 'pending' && (
-                    <button
-                      onClick={() => updateSOSStatus(alert._id, 'verified')}
-                      className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-                    >
-                      Verify
-                    </button>
-                  )}
-                  {alert.status === 'verified' && (
-                    <button
-                      onClick={() => updateSOSStatus(alert._id, 'in_progress')}
-                      className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700"
-                    >
-                      Start Response
-                    </button>
-                  )}
-                  {alert.status === 'in_progress' && (
-                    <button
-                      onClick={() => updateSOSStatus(alert._id, 'resolved')}
-                      className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
-                    >
-                      Resolve
-                    </button>
-                  )}
-                </div>
               </div>
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
+        
         {sosAlerts.length === 0 && !loading && (
           <li className="px-4 py-8 text-center text-gray-400">
-            No alerts found for {departments.find(d => d.value === selectedDepartment)?.label} department
+            <svg className="mx-auto h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="mt-2 text-sm">No alerts found for {departments.find(d => d.value === selectedDepartment)?.label || selectedDepartment} department</p>
           </li>
         )}
       </ul>
