@@ -1,7 +1,7 @@
 // backend/routes/chatbot.js
 const express = require('express');
 const router = express.Router();
-const geminiService = require('../services/geminiService');
+const openRouterService = require('../services/openRouterService');
 
 // POST /api/chat/send - Send message to AI chatbot
 router.post('/send', async (req, res) => {
@@ -17,8 +17,8 @@ router.post('/send', async (req, res) => {
 
     console.log('🤖 Chat request:', { message, historyLength: chatHistory.length });
 
-    // Call Gemini service
-    const response = await geminiService.sendMessage(message, chatHistory);
+    // Call OpenRouter service
+    const response = await openRouterService.sendMessage(message, chatHistory);
 
     res.json({
       success: true,
@@ -29,25 +29,44 @@ router.post('/send', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Chat API error:', error);
+    console.error('❌ Chat API error:', error.message);
+    
     res.status(500).json({
       success: false,
-      error: 'Failed to process chat message',
+      error: 'AI service temporarily unavailable',
       details: error.message
     });
   }
 });
 
 // GET /api/chat/health - Check chatbot service health
-router.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      service: 'Chatbot API',
-      status: 'operational',
-      timestamp: new Date().toISOString()
-    }
-  });
+router.get('/health', async (req, res) => {
+  try {
+    // Test the service
+    await openRouterService.sendMessage('Test connection');
+    
+    res.json({
+      success: true,
+      data: {
+        service: 'Chatbot API',
+        status: 'operational',
+        ai: 'connected',
+        provider: 'OpenRouter',
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      data: {
+        service: 'Chatbot API', 
+        status: 'degraded',
+        ai: 'fallback mode',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
 });
 
 module.exports = router;

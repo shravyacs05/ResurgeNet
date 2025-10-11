@@ -10,6 +10,8 @@ const app = express();
 const disasterRoutes = require("./routes/disasterRoutes");
 const sosRoutes = require('./routes/sosRoutes'); 
 const RoadReport = require('./routes/RoadReport');
+const chatbotRoutes = require('./routes/chatbot');
+const newsRoutes = require('./routes/newsRoutes');
 
 // Middleware
 app.use(cors());
@@ -21,6 +23,8 @@ app.use('/api/shelters', require('./routes/shelters'));
 app.use("/api/disaster", disasterRoutes);
 app.use('/api/sos', sosRoutes); 
 app.use('/api/road-reports', RoadReport);
+app.use('/api/chat', chatbotRoutes);
+app.use('/api/news', newsRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
