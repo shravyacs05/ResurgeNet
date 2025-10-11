@@ -1,3 +1,4 @@
+// models/Shelter.js
 const mongoose = require('mongoose');
 
 const shelterSchema = new mongoose.Schema({
@@ -28,9 +29,9 @@ const shelterSchema = new mongoose.Schema({
       message: 'Occupied count cannot exceed capacity'
     }
   },
-   createdBy: {
+  createdBy: {
     type: String,
-    required: true // Make sure this is required
+    required: true
   },
   facilities: [{
     type: String,
@@ -57,6 +58,12 @@ const shelterSchema = new mongoose.Schema({
   lastUpdated: {
     type: Date,
     default: Date.now
+  },
+  // Track who last updated the shelter
+  lastUpdatedBy: {
+    userId: String,
+    name: String,
+    role: String
   }
 }, {
   timestamps: true
