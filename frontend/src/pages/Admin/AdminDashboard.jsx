@@ -1,5 +1,9 @@
 // components/AdminDashboard.jsx
 import React, { useState, useEffect } from 'react';
+import SOSManagement from './SOSManagement';
+import RoadsManagement from './RoadsManagement';
+import SheltersManagement from './SheltersManagement';
+import VolunteerTaskAllotment from './VolunteerTaskAllotment';
 
 const AdminDashboard = ({ user }) => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -357,59 +361,6 @@ const AdminDashboard = ({ user }) => {
     }));
   };
 
-  // SOS Alerts Functions
-  const updateSOSStatus = async (alertId, newStatus) => {
-    try {
-      setError('');
-      
-      const response = await fetch(`${API_BASE_URL}/sos/${alertId}/status`, {
-        method: 'PATCH',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          status: newStatus,
-          department: selectedDepartment,
-          adminId: user?.uid,
-          adminName: user?.name
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update SOS status');
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Update local state
-        setSosAlerts(sosAlerts.map(alert => 
-          alert._id === alertId ? { ...alert, status: newStatus } : alert
-        ));
-        
-        // Refresh the list
-        fetchSOSAlerts();
-      } else {
-        throw new Error(result.message || 'Failed to update SOS status');
-      }
-    } catch (err) {
-      console.error('Error updating SOS status:', err);
-      setError('Failed to update SOS status. Please try again.');
-    }
-  };
-
-  const saveSOSEdit = async () => {
-    try {
-      // This would be replaced with actual API call
-      setSosAlerts(sosAlerts.map(alert => 
-        alert.id === editingItem.id ? { ...alert, ...editForm } : alert
-      ));
-      setEditingItem(null);
-      setEditForm({});
-    } catch (err) {
-      console.error('Error saving SOS edit:', err);
-      setError('Failed to save SOS changes');
-    }
-  };
-
   // User Management Functions
   const updateUserTrustScore = async (id, change) => {
     try {
@@ -445,50 +396,6 @@ const AdminDashboard = ({ user }) => {
     } catch (err) {
       console.error('Error deleting user:', err);
       setError('Failed to delete user');
-    }
-  };
-
-  // Road Reports Functions
-  const verifyRoadReport = async (id) => {
-    try {
-      setError('');
-      
-      const response = await fetch(`${API_BASE_URL}/road-reports/${id}/verify`, {
-        method: 'PATCH',
-        headers: getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to verify road report');
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        setRoadReports(roadReports.map(report => 
-          report.id === id ? { ...report, verified: true } : report
-        ));
-        setSystemStats(prev => ({ ...prev, verifiedReports: prev.verifiedReports + 1 }));
-      } else {
-        throw new Error(result.message || 'Failed to verify road report');
-      }
-    } catch (err) {
-      console.error('Error verifying road report:', err);
-      setError('Failed to verify road report');
-    }
-  };
-
-  const saveRoadReportEdit = async () => {
-    try {
-      // This would be replaced with actual API call
-      setRoadReports(roadReports.map(report => 
-        report.id === editingItem.id ? { ...report, ...editForm } : report
-      ));
-      setEditingItem(null);
-      setEditForm({});
-    } catch (err) {
-      console.error('Error saving road report edit:', err);
-      setError('Failed to save road report changes');
     }
   };
 
@@ -834,65 +741,6 @@ const AdminDashboard = ({ user }) => {
             </div>
           );
 
-        case 'road':
-          return (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300">Location</label>
-                <input
-                  type="text"
-                  value={editForm.location || ''}
-                  onChange={(e) => handleEditChange('location', e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300">Type</label>
-                <select
-                  value={editForm.type || ''}
-                  onChange={(e) => handleEditChange('type', e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                >
-                  <option value="blocked">Blocked</option>
-                  <option value="clear">Clear</option>
-                  <option value="partial">Partial Blockage</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300">Severity</label>
-                <select
-                  value={editForm.severity || ''}
-                  onChange={(e) => handleEditChange('severity', e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                >
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300">Critical</label>
-                <select
-                  value={editForm.critical || ''}
-                  onChange={(e) => handleEditChange('critical', e.target.value === 'true')}
-                  className="mt-1 block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                >
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300">Description</label>
-                <textarea
-                  value={editForm.description || ''}
-                  onChange={(e) => handleEditChange('description', e.target.value)}
-                  rows={3}
-                  className="mt-1 block w-full rounded-md border-gray-600 bg-gray-700 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          );
-
         case 'shelter':
           return (
             <div className="space-y-4">
@@ -962,13 +810,10 @@ const AdminDashboard = ({ user }) => {
     const handleSave = () => {
       switch (editingItem.type) {
         case 'sos':
-          saveSOSEdit();
+          // saveSOSEdit(); // Removed as it's now handled in SOSManagement
           break;
         case 'user':
           saveUserEdit();
-          break;
-        case 'road':
-          saveRoadReportEdit();
           break;
         case 'shelter':
           saveShelterEdit();
@@ -982,7 +827,6 @@ const AdminDashboard = ({ user }) => {
       switch (editingItem.type) {
         case 'sos': return 'Edit SOS Alert';
         case 'user': return 'Edit User';
-        case 'road': return 'Edit Road Report';
         case 'shelter': return 'Edit Shelter';
         default: return 'Edit Item';
       }
@@ -1138,6 +982,7 @@ const AdminDashboard = ({ user }) => {
               { id: 'users', name: 'User Management' },
               { id: 'roads', name: 'Road Reports' },
               { id: 'shelters', name: 'Shelters' },
+              { id: 'volunteer_tasks', name: 'Volunteer Tasks' },
               { id: 'analytics', name: 'Analytics' },
               { id: 'system', name: 'System Settings' },
             ].map((tab) => (
@@ -1311,124 +1156,37 @@ const AdminDashboard = ({ user }) => {
             </div>
           )}
 
+          {/* Use Separated Components */}
           {activeTab === 'sos' && (
-            <div className="bg-gray-800 shadow overflow-hidden sm:rounded-md">
-              <div className="px-4 py-4 bg-gray-700 flex justify-between items-center">
-                <h3 className="text-lg font-medium text-white">
-                  SOS Alerts - {departments.find(d => d.value === selectedDepartment)?.label}
-                </h3>
-                <div className="flex space-x-2">
-                  {loading && <span className="text-xs text-gray-400">Loading...</span>}
-                  <select className="rounded-md border-gray-600 bg-gray-600 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                    <option>All Types</option>
-                    <option>Critical</option>
-                    <option>High Priority</option>
-                    <option>Medium Priority</option>
-                  </select>
-                  <button 
-                    onClick={fetchSOSAlerts}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                  >
-                    Refresh
-                  </button>
-                </div>
-              </div>
-              <ul className="divide-y divide-gray-700">
-                {sosAlerts.map((alert) => (
-                  <li key={alert._id}>
-                    <div className="px-4 py-4 sm:px-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center flex-1">
-                          <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center ${
-                            alert.mlClassification?.urgencyLevel === 'critical' || alert.mlClassification?.urgencyLevel === 'high' ? 'bg-red-500' : 
-                            alert.mlClassification?.urgencyLevel === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
-                          }`}>
-                            <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
-                          </div>
-                          <div className="ml-4 flex-1">
-                            <div className="flex items-center">
-                              <h3 className="text-sm font-medium text-white">
-                                {alert.userName} - {alert.emergencyType}
-                              </h3>
-                              <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                alert.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                alert.status === 'verified' ? 'bg-blue-100 text-blue-800' :
-                                alert.status === 'in_progress' ? 'bg-purple-100 text-purple-800' :
-                                'bg-green-100 text-green-800'
-                              }`}>
-                                {alert.status.charAt(0).toUpperCase() + alert.status.slice(1)}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-400 mt-1">
-                              {alert.location?.address}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {formatTimeAgo(alert.createdAt)} • Priority: {alert.mlClassification?.urgencyLevel || 'medium'} • People: {alert.peopleAffected || 'N/A'}
-                            </p>
-                            <p className="text-sm text-gray-300 mt-2">
-                              {alert.message?.substring(0, 150)}{alert.message?.length > 150 ? '...' : ''}
-                            </p>
-                            {alert.mlClassification?.primaryDepartments && (
-                              <div className="mt-2">
-                                <p className="text-xs text-gray-400">Assigned to:</p>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {alert.mlClassification.primaryDepartments.map(dept => (
-                                    <span key={dept} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300">
-                                      {dept.replace(/_/g, ' ')}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-col space-y-2 ml-4">
-                          <button
-                            onClick={() => startEditing(alert, 'sos')}
-                            className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                          >
-                            Edit
-                          </button>
-                          {alert.status === 'pending' && (
-                            <button
-                              onClick={() => updateSOSStatus(alert._id, 'verified')}
-                              className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-                            >
-                              Verify
-                            </button>
-                          )}
-                          {alert.status === 'verified' && (
-                            <button
-                              onClick={() => updateSOSStatus(alert._id, 'in_progress')}
-                              className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700"
-                            >
-                              Start Response
-                            </button>
-                          )}
-                          {alert.status === 'in_progress' && (
-                            <button
-                              onClick={() => updateSOSStatus(alert._id, 'resolved')}
-                              className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
-                            >
-                              Resolve
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-                {sosAlerts.length === 0 && !loading && (
-                  <li className="px-4 py-8 text-center text-gray-400">
-                    No alerts found for {departments.find(d => d.value === selectedDepartment)?.label} department
-                  </li>
-                )}
-              </ul>
-            </div>
+            <SOSManagement 
+              user={user}
+              selectedDepartment={selectedDepartment}
+              getAuthHeaders={getAuthHeaders}
+            />
           )}
 
+          {activeTab === 'roads' && (
+            <RoadsManagement 
+              user={user}
+              getAuthHeaders={getAuthHeaders}
+            />
+          )}
+
+          {activeTab === 'shelters' && (
+            <SheltersManagement 
+              user={user}
+              getAuthHeaders={getAuthHeaders}
+            />
+          )}
+
+          {activeTab === 'volunteer_tasks' && (
+            <VolunteerTaskAllotment 
+              user={user}
+              getAuthHeaders={getAuthHeaders}
+            />
+          )}
+
+          {/* Keep existing tabs for User Management, Analytics, and System Settings */}
           {activeTab === 'users' && (
             <div className="bg-gray-800 shadow overflow-hidden sm:rounded-md">
               <div className="px-4 py-4 bg-gray-700 flex justify-between items-center">
@@ -1522,218 +1280,6 @@ const AdminDashboard = ({ user }) => {
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
-
-          {activeTab === 'roads' && (
-            <div className="bg-gray-800 shadow overflow-hidden sm:rounded-md">
-              <div className="px-4 py-4 bg-gray-700 flex justify-between items-center">
-                <h3 className="text-lg font-medium text-white">Road Report Management</h3>
-                <div className="flex space-x-2">
-                  <select className="rounded-md border-gray-600 bg-gray-600 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                    <option>All Types</option>
-                    <option>blocked</option>
-                    <option>clear</option>
-                  </select>
-                  <select className="rounded-md border-gray-600 bg-gray-600 text-white shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                    <option>All Status</option>
-                    <option>active</option>
-                    <option>resolved</option>
-                  </select>
-                  <button 
-                    onClick={fetchRoadReports}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                  >
-                    Refresh
-                  </button>
-                </div>
-              </div>
-              {loading ? (
-                <div className="px-4 py-8 text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-                  <p className="mt-2 text-gray-400">Loading road reports...</p>
-                </div>
-              ) : error ? (
-                <div className="px-4 py-8 text-center">
-                  <div className="bg-red-900 text-red-200 p-4 rounded-lg">
-                    <p>Error loading road reports: {error}</p>
-                    <button 
-                      onClick={fetchRoadReports}
-                      className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <ul className="divide-y divide-gray-700">
-                  {roadReports.map((report) => (
-                    <li key={report.id}>
-                      <div className="px-4 py-4 sm:px-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center ${
-                              report.critical ? 'bg-red-500' : 'bg-yellow-500'
-                            }`}>
-                              <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                              </svg>
-                            </div>
-                            <div className="ml-4">
-                              <div className="flex items-center">
-                                <h3 className="text-sm font-medium text-white">
-                                  {report.type} - {report.location}
-                                </h3>
-                                <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  report.verified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                                }`}>
-                                  {report.verified ? 'Verified' : 'Unverified'}
-                                </span>
-                                {report.critical && (
-                                  <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                    Critical
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-400 mt-1">
-                                Reported by {report.reportedBy} • {report.time}
-                              </p>
-                              {report.description && (
-                                <p className="text-sm text-gray-500 mt-1">{report.description}</p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => startEditing(report, 'road')}
-                              className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                            >
-                              Edit
-                            </button>
-                            {!report.verified && (
-                              <button
-                                onClick={() => verifyRoadReport(report.id)}
-                                className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                              >
-                                Verify
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'shelters' && (
-            <div className="bg-gray-800 shadow overflow-hidden sm:rounded-md">
-              <div className="px-4 py-4 bg-gray-700 flex justify-between items-center">
-                <h3 className="text-lg font-medium text-white">Shelter Management</h3>
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={fetchShelters}
-                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                  >
-                    Refresh
-                  </button>
-                </div>
-              </div>
-              
-              {shelters.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-4 0H9m4 0V9a2 2 0 00-2-2H9a2 2 0 00-2 2v12m4 0V9" />
-                  </svg>
-                  <h3 className="mt-2 text-sm font-medium text-white">No shelters</h3>
-                  <p className="mt-1 text-sm text-gray-400">Get started by adding a new shelter.</p>
-                </div>
-              ) : (
-                <ul className="divide-y divide-gray-700">
-                  {shelters.map((shelter) => (
-                    <li key={shelter._id}>
-                      <div className="px-4 py-4 sm:px-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10 rounded-full bg-green-500 flex items-center justify-center">
-                              <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                              </svg>
-                            </div>
-                            <div className="ml-4">
-                              <h3 className="text-sm font-medium text-white">
-                                {shelter.name}
-                              </h3>
-                              <p className="text-sm text-gray-400 mt-1">
-                                {shelter.location} • Capacity: {shelter.occupied}/{shelter.capacity}
-                              </p>
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {shelter.facilities?.slice(0, 3).map((facility, index) => (
-                                  <span key={index} className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-900 text-blue-300">
-                                    {facility}
-                                  </span>
-                                ))}
-                                {shelter.facilities?.length > 3 && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-300">
-                                    +{shelter.facilities.length - 3} more
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              shelter.verified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {shelter.verified ? 'Verified' : 'Pending'}
-                            </span>
-                            <button
-                              onClick={() => startEditing(shelter, 'shelter')}
-                              className="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => toggleShelterVerification(shelter._id)}
-                              className={`inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white ${
-                                shelter.verified ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'
-                              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500`}
-                            >
-                              {shelter.verified ? 'Unverify' : 'Verify'}
-                            </button>
-                            <button
-                              onClick={() => deleteShelter(shelter._id)}
-                              className="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                        <div className="mt-2">
-                          <div className="flex justify-between text-sm text-gray-400 mb-1">
-                            <span>Occupancy</span>
-                            <span>{Math.round((shelter.occupied / shelter.capacity) * 100)}%</span>
-                          </div>
-                          <div className="w-full bg-gray-700 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${
-                                shelter.occupied / shelter.capacity > 0.8 ? 'bg-red-600' : 
-                                shelter.occupied / shelter.capacity > 0.5 ? 'bg-yellow-600' : 'bg-green-600'
-                              }`}
-                              style={{ width: `${(shelter.occupied / shelter.capacity) * 100}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-xs text-gray-500">
-                          Last updated: {shelter.lastUpdated ? new Date(shelter.lastUpdated).toLocaleString() : 'Unknown'}
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
           )}
 

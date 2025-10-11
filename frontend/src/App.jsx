@@ -255,12 +255,6 @@ function App() {
             path="/admin-dashboard" 
             element={user?.role === 'department_admin' ? <AdminDashboard user={user} /> : <Navigate to="/" replace />} 
           />
-
-          {/* NEW: Admin Task Management Route */}
-          <Route 
-            path="/admin-task-management" 
-            element={user?.role === 'department_admin' ? <AdminTaskManagement user={user} /> : <Navigate to="/" replace />} 
-          />
           
           <Route 
             path="/superadmin-dashboard" 
