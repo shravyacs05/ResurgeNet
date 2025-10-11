@@ -13,7 +13,7 @@ import RoadReports from './pages/RoadReports';
 import Shelters from './pages/Shelters';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import SuperAdminDashboard from './pages/SuperAdmin/SuperAdminDashboard';
-import ChatBot from './pages/ChatBot';
+import ChatBot from './pages/Chatbot'; 
 import Profile from './pages/Profile';
 
 function App() {
