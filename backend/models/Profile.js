@@ -1,3 +1,4 @@
+// models/Profile.js
 const mongoose = require('mongoose');
 
 const emergencyContactSchema = new mongoose.Schema({
@@ -18,14 +19,12 @@ const emergencyContactSchema = new mongoose.Schema({
 });
 
 const profileSchema = new mongoose.Schema({
-  // Link to Firebase UID
   userId: {
     type: String,
     required: true,
     unique: true,
     index: true
   },
-  // Personal Information
   name: {
     type: String,
     required: true,
@@ -45,8 +44,6 @@ const profileSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-  
-  // Medical Information
   bloodGroup: {
     type: String,
     enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', '']
@@ -55,11 +52,28 @@ const profileSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-  
-  // Emergency Contacts
   emergencyContacts: [emergencyContactSchema],
-  
-  // Account Information
+  // Update role enum to include super_admin
+  role: {
+    type: String,
+    enum: ['user', 'department_admin', 'admin', 'super_admin'], // Added super_admin
+    default: 'user'
+  },
+  // Add department field
+  department: {
+    type: String,
+    default: 'general',
+    enum: [
+      'general',
+      'emergency_response', 
+      'medical_health',
+      'infrastructure_utilities',
+      'relief_shelter',
+      'environment_hazards',
+      'community_support',
+      'all'
+    ]
+  },
   trustScore: {
     type: Number,
     default: 80,
@@ -78,13 +92,11 @@ const profileSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Update lastUpdated timestamp before saving
 profileSchema.pre('save', function(next) {
   this.lastUpdated = new Date();
   next();
 });
 
-// Index for better query performance
 profileSchema.index({ userId: 1 });
 profileSchema.index({ email: 1 });
 
