@@ -15,7 +15,6 @@ import AdminDashboard from './pages/Admin/AdminDashboard';
 import SuperAdminDashboard from './pages/SuperAdmin/SuperAdminDashboard';
 import ChatBot from './pages/ChatBot';
 import Profile from './pages/Profile';
-import AdminTaskManagement from './pages/Admin/AdminTaskManagement'; // Add this import
 
 function App() {
   const [user, setUser] = useState(null);
