@@ -17,6 +17,9 @@ import ChatBot from './pages/Chatbot';
 import Profile from './pages/Profile';
 import News from './pages/News';
 import VolunteerTaskDashboard from './pages/VolunteerTaskDashboard';
+import PledgeSupport from './pages/PledgeSupport';
+
+import ReliefPartners from './pages/ReliefPartners';
 function App() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -270,7 +273,15 @@ function App() {
             path="/news" 
             element={user?.role === 'user' ? <News user={user} /> : <Navigate to="/" replace />} 
           />
+          
+          <Route path="/relief-partners" 
+  element={<ReliefPartners />} 
+/>
 
+<Route 
+  path="/pledge-support" 
+  element={<PledgeSupport />} 
+/>
           {/* Fallback - 404 handling */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

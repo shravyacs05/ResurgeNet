@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PartnerApprovals from './PartnerApprovals';
 
 // Define SOS_CATEGORIES constant
 const SOS_CATEGORIES = {
@@ -48,7 +49,7 @@ const SuperAdminDashboard = ({ user, onLogout }) => {
       location: 'Downtown Area',
       description: 'Major building fire reported',
       status: 'pending',
-      createdAt: new Date(Date.now() - 30 * 60000), // 30 minutes ago
+      createdAt: new Date(Date.now() - 30 * 60000),
       priority: 'high'
     },
     {
@@ -58,7 +59,7 @@ const SuperAdminDashboard = ({ user, onLogout }) => {
       location: 'Central Park',
       description: 'Multiple injuries from accident',
       status: 'acknowledged',
-      createdAt: new Date(Date.now() - 15 * 60000), // 15 minutes ago
+      createdAt: new Date(Date.now() - 15 * 60000),
       priority: 'high'
     },
     {
@@ -68,7 +69,7 @@ const SuperAdminDashboard = ({ user, onLogout }) => {
       location: 'North District',
       description: 'Large area without electricity',
       status: 'resolved',
-      createdAt: new Date(Date.now() - 120 * 60000), // 2 hours ago
+      createdAt: new Date(Date.now() - 120 * 60000),
       priority: 'medium'
     },
     {
@@ -78,7 +79,7 @@ const SuperAdminDashboard = ({ user, onLogout }) => {
       location: 'Riverside Area',
       description: 'Flash floods reported',
       status: 'pending',
-      createdAt: new Date(Date.now() - 45 * 60000), // 45 minutes ago
+      createdAt: new Date(Date.now() - 45 * 60000),
       priority: 'critical'
     },
     {
@@ -88,7 +89,7 @@ const SuperAdminDashboard = ({ user, onLogout }) => {
       location: 'Westside Community',
       description: 'Families displaced due to flooding',
       status: 'acknowledged',
-      createdAt: new Date(Date.now() - 20 * 60000), // 20 minutes ago
+      createdAt: new Date(Date.now() - 20 * 60000),
       priority: 'high'
     },
     {
@@ -98,29 +99,14 @@ const SuperAdminDashboard = ({ user, onLogout }) => {
       location: 'City Center',
       description: 'Need volunteers for relief distribution',
       status: 'pending',
-      createdAt: new Date(Date.now() - 10 * 60000), // 10 minutes ago
+      createdAt: new Date(Date.now() - 10 * 60000),
       priority: 'medium'
     }
   ];
 
   useEffect(() => {
-    // For now, use dummy data instead of Firestore
     setSosAlerts(dummyAlerts);
     calculateStats(dummyAlerts);
-    
-    // Uncomment when Firestore is set up:
-    /*
-    const q = query(collection(db, 'sosAlerts'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const alerts = [];
-      snapshot.forEach((doc) => {
-        alerts.push({ id: doc.id, ...doc.data() });
-      });
-      setSosAlerts(alerts);
-      calculateStats(alerts);
-    });
-    return () => unsubscribe();
-    */
   }, []);
 
   const calculateStats = (alerts) => {
@@ -141,22 +127,13 @@ const SuperAdminDashboard = ({ user, onLogout }) => {
 
   const updateAlertStatus = async (alertId, status) => {
     try {
-      // For demo purposes, update local state
       setSosAlerts(prev => prev.map(alert => 
         alert.id === alertId ? { ...alert, status } : alert
       ));
       
-      // Recalculate stats after update
       calculateStats(sosAlerts.map(alert => 
         alert.id === alertId ? { ...alert, status } : alert
       ));
-      
-      // Uncomment when Firestore is set up:
-      // await updateDoc(doc(db, 'sosAlerts', alertId), {
-      //   status,
-      //   resolvedAt: status === 'resolved' ? new Date() : null,
-      //   resolvedBy: user.email
-      // });
     } catch (error) {
       console.error('Error updating alert:', error);
     }
@@ -195,26 +172,37 @@ const SuperAdminDashboard = ({ user, onLogout }) => {
     return `${Math.floor(diffInMinutes / 1440)}d ago`;
   };
 
+  // If Partner Approvals tab is active, render only that component
+  if (activeTab === 'partner_approvals') {
+    return <PartnerApprovals user={user} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header */}
-    
-
       {/* Navigation Tabs */}
       <div className="bg-gray-800 border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex space-x-8">
-            {['overview', 'alerts', 'departments', 'analytics'].map((tab) => (
+            {['overview', 'alerts', 'departments', 'analytics', 'partner_approvals'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm capitalize transition duration-300 ${
+                className={`py-4 px-1 border-b-2 font-medium text-sm capitalize transition duration-300 relative ${
                   activeTab === tab
                     ? 'border-red-500 text-red-400'
                     : 'border-transparent text-gray-400 hover:text-gray-300'
                 }`}
               >
-                {tab}
+                {tab === 'partner_approvals' ? (
+                  <span className="flex items-center space-x-2">
+                    <span>Partner Approvals</span>
+                    <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full animate-pulse">
+                      New
+                    </span>
+                  </span>
+                ) : (
+                  tab
+               )}
               </button>
             ))}
           </nav>
@@ -274,6 +262,8 @@ const SuperAdminDashboard = ({ user, onLogout }) => {
                 </div>
               </div>
             </div>
+
+            
 
             {/* Department Statistics */}
             <div className="mb-8">
