@@ -125,55 +125,118 @@ async function sendEmergencyAlertNotifications(userProfile, alertDetails) {
 
   const { emergencyType, location, message, urgencyLevel } = alertDetails;
   
-  // Compose message
-  const alertMessage = `
-🚨 EMERGENCY ALERT 🚨
+  // Compose message for the user
+  const userAlertMessage = `
+🚨 YOUR EMERGENCY ALERT SENT 🚨
 
 Type: ${emergencyType.toUpperCase()}
 Urgency: ${urgencyLevel.toUpperCase()}
 Location: ${location.address}
 
-Message: ${message}
+Your Message: ${message}
 
-Reported by: ${userProfile.name}
-Time: ${new Date().toLocaleString()}
+✅ Emergency services have been notified
+✅ Your emergency contacts are being alerted
+✅ Nearby responders are being notified
 
-Emergency services have been notified.
+Stay safe! Help is on the way.
+
+Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+`.trim();
+
+  // Compose message for emergency contacts
+  const contactAlertMessage = `
+🚨 EMERGENCY ALERT 🚨
+
+${userProfile.name} NEEDS IMMEDIATE HELP!
+
+Emergency Type: ${emergencyType.toUpperCase()}
+Urgency Level: ${urgencyLevel.toUpperCase()}
+
+📍 Location: ${location.address}
+${location.lat && location.lng ? `GPS: https://maps.google.com/?q=${location.lat},${location.lng}` : ''}
+
+💬 Their Message:
+${message}
+
+⏰ Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+
+📞 Contact: ${userProfile.phone || 'Not available'}
+
+⚠️ EMERGENCY SERVICES NOTIFIED
+Please check on ${userProfile.name} immediately or contact local authorities.
+
+You received this because you are listed as an emergency contact for ${userProfile.name}.
 `.trim();
 
   const results = {
     user: null,
-    emergencyContacts: []
+    emergencyContacts: [],
+    summary: {
+      userNotified: false,
+      contactsNotified: 0,
+      contactsFailed: 0,
+      totalContacts: 0
+    }
   };
 
-  // Send to user
+  // Send to user (confirmation message)
+  console.log(`📱 Sending confirmation to user: ${userProfile.name} (${userProfile.phone})`);
   if (userProfile.phone && userProfile.phone.startsWith('+')) {
     results.user = await sendWhatsAppMessage(
       userProfile.phone,
-      `Your emergency alert has been sent to authorities.\n\n${alertMessage}`
+      userAlertMessage
     );
+    results.summary.userNotified = results.user.success;
+  } else {
+    console.warn(`⚠️ User phone not in E.164 format: ${userProfile.phone}`);
   }
 
-  // Send to emergency contacts
+  // Send to ALL emergency contacts
   if (userProfile.emergencyContacts && userProfile.emergencyContacts.length > 0) {
+    console.log(`📞 Found ${userProfile.emergencyContacts.length} emergency contacts`);
+    results.summary.totalContacts = userProfile.emergencyContacts.length;
+    
     for (const contact of userProfile.emergencyContacts) {
+      console.log(`📱 Notifying emergency contact: ${contact.name} (${contact.relationship}) - ${contact.phone}`);
+      
       if (contact.phone && contact.phone.startsWith('+')) {
-        const contactMessage = `
-EMERGENCY: ${userProfile.name} needs help!
-
-${contact.name}, you are listed as an emergency contact.
-
-${alertMessage}
-`.trim();
-
-        const result = await sendWhatsAppMessage(contact.phone, contactMessage);
+        const result = await sendWhatsAppMessage(contact.phone, contactAlertMessage);
+        
+        if (result.success) {
+          results.summary.contactsNotified++;
+          console.log(`✅ Successfully notified ${contact.name}`);
+        } else {
+          results.summary.contactsFailed++;
+          console.error(`❌ Failed to notify ${contact.name}: ${result.error}`);
+        }
+        
         results.emergencyContacts.push({
           contact: contact.name,
+          relationship: contact.relationship,
           phone: contact.phone,
-          result
+          result: result,
+          timestamp: new Date()
+        });
+      } else {
+        results.summary.contactsFailed++;
+        console.warn(`⚠️ Invalid phone format for ${contact.name}: ${contact.phone}`);
+        results.emergencyContacts.push({
+          contact: contact.name,
+          relationship: contact.relationship,
+          phone: contact.phone,
+          result: {
+            success: false,
+            error: 'Invalid phone format - must start with +'
+          },
+          timestamp: new Date()
         });
       }
     }
+    
+    console.log(`📊 Emergency Contacts Summary: ${results.summary.contactsNotified} notified, ${results.summary.contactsFailed} failed out of ${results.summary.totalContacts} total`);
+  } else {
+    console.log('ℹ️ No emergency contacts found for this user');
   }
 
   return results;

@@ -13,6 +13,8 @@ const sosRoutes = require('./routes/sosRoutes');
 const RoadReport = require('./routes/RoadReport');
 const chatbotRoutes = require('./routes/chatbot');
 const newsRoutes = require('./routes/newsRoutes');
+const taskRoutes = require('./routes/tasks');
+const volunteerRoutes = require('./routes/volunteers');
 
 // Middleware
 app.use(cors());
@@ -22,6 +24,8 @@ app.use(express.urlencoded({ extended: true }));
 const { sendWhatsAppMessage } = require('./notifications');
 
 // Routes
+app.use('/api/volunteers', volunteerRoutes);
+app.use('/api/tasks', taskRoutes);
 app.use("/api/profile", require("./routes/profile"));
 app.use('/api/shelters', require('./routes/shelters'));
 app.use("/api/disaster", disasterRoutes);

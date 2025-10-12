@@ -16,7 +16,7 @@ import SuperAdminDashboard from './pages/SuperAdmin/SuperAdminDashboard';
 import ChatBot from './pages/Chatbot'; 
 import Profile from './pages/Profile';
 import News from './pages/News';
-
+import VolunteerTaskDashboard from './pages/VolunteerTaskDashboard';
 function App() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -229,6 +229,10 @@ function App() {
           <Route 
             path="/profile" 
             element={user?.role === 'user' ? <Profile user={user} setUser={setUser} /> : <Navigate to="/" replace />} 
+          />
+          <Route 
+            path="/tasks" 
+            element={user?.role === 'user' ? <VolunteerTaskDashboard user={user} setUser={setUser} /> : <Navigate to="/" replace />} 
           />
           
           <Route 

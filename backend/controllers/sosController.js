@@ -26,7 +26,6 @@ exports.createSOSAlert = async (req, res) => {
   try {
     console.log("=== SOS Alert Creation Started ===");
     console.log("Request Body:", req.body);
-    console.log("User ID from body:", req.body.userId);
 
     const { 
       emergencyType, 
@@ -214,15 +213,57 @@ exports.createSOSAlert = async (req, res) => {
     // Send WhatsApp notifications (non-blocking)
     if (isTwilioConfigured()) {
       console.log("📱 Sending WhatsApp notifications...");
+      console.log(`👤 User: ${userProfile.name} (${userProfile.phone})`);
+      console.log(`📞 Emergency Contacts: ${userProfile.emergencyContacts?.length || 0}`);
+      
+      // Log all emergency contacts
+      if (userProfile.emergencyContacts && userProfile.emergencyContacts.length > 0) {
+        userProfile.emergencyContacts.forEach((contact, index) => {
+          console.log(`   ${index + 1}. ${contact.name} (${contact.relationship}) - ${contact.phone}`);
+        });
+      }
+      
+      // Format user phone to E.164
+      console.log(`📱 Formatted user phone: ${userProfile.phone} → ${userProfile.phone}`);
+      
+      // Create a modified profile with formatted phone for notifications
+      const notificationProfile = {
+        ...userProfile.toObject(),
+        phone: userProfile.phone
+      };
+      
+      // Format emergency contact phones
+      if (notificationProfile.emergencyContacts && notificationProfile.emergencyContacts.length > 0) {
+        notificationProfile.emergencyContacts = notificationProfile.emergencyContacts.map(contact => {
+          const formatted = contact.phone;
+          console.log(`📱 Formatting contact ${contact.name}: ${contact.phone} → ${formatted}`);
+          return {
+            ...contact,
+            phone: formatted
+          };
+        });
+        
+        console.log('📱 All emergency contacts formatted successfully');
+      }
       
       // Send to user and emergency contacts
-      sendEmergencyAlertNotifications(userProfile, {
+      sendEmergencyAlertNotifications(notificationProfile, {
         emergencyType,
         location: sosAlert.location,
         message,
         urgencyLevel
       }).then(results => {
-        console.log("✅ Emergency notifications sent:", results);
+        console.log("✅ Emergency notifications sent:");
+        console.log(`   User notified: ${results.summary.userNotified ? '✅' : '❌'}`);
+        console.log(`   Contacts notified: ${results.summary.contactsNotified}/${results.summary.totalContacts}`);
+        
+        if (results.emergencyContacts.length > 0) {
+          console.log('   Detailed results:');
+          results.emergencyContacts.forEach(contact => {
+            const status = contact.result.success ? '✅' : '❌';
+            console.log(`     ${status} ${contact.contact} (${contact.relationship})`);
+          });
+        }
       }).catch(error => {
         console.error("❌ Failed to send emergency notifications:", error);
       });
@@ -238,7 +279,7 @@ exports.createSOSAlert = async (req, res) => {
             $maxDistance: 5000 // 5km radius
           }
         },
-        phone: { $exists: true, $ne: null, $regex: /^\+/ },
+        phone: { $exists: true, $ne: null },
         userId: { $ne: userId } // Exclude the reporter
       }).limit(50).then(nearbyUsers => {
         if (nearbyUsers.length > 0) {
@@ -256,7 +297,12 @@ ${message}
 Stay safe and be aware of your surroundings.
 `.trim();
 
-          const phoneNumbers = nearbyUsers.map(u => u.phone).filter(p => p && p.startsWith('+'));
+          // Format all phone numbers to E.164
+          const phoneNumbers = nearbyUsers
+            .map(u => formatPhoneToE164(u.phone))
+            .filter(p => p && isValidE164(p));
+          
+          console.log(`📱 Sending to ${phoneNumbers.length} valid phone numbers`);
           
           sendBulkWhatsAppMessages(phoneNumbers, nearbyMessage).then(results => {
             const successCount = results.filter(r => r.value?.success).length;
@@ -298,7 +344,6 @@ Stay safe and be aware of your surroundings.
     });
   }
 };
-
 
 // Get alerts for a specific department
 exports.getDepartmentAlerts = async (req, res) => {
