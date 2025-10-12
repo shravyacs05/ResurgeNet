@@ -102,66 +102,68 @@ const MapView = ({ user }) => {
         }
       }
 
-      // Fetch SOS alerts (you'll need to implement this endpoint)
-      // For now, using mock data that matches your schema
-      const mockSOSAlerts = [
-        {
-          id: '1',
-          type: 'sos',
-          position: [19.0760, 72.8777],
-          emergencyType: 'medical',
-          message: 'Need immediate medical assistance',
-          userName: 'User123',
-          userPhone: '9876543210',
-          severity: 'high',
-          status: 'pending',
-          location: {
-            address: 'Mumbai Central',
-            area: 'South Mumbai',
-            city: 'Mumbai'
-          }
-        },
-        {
-          id: '2',
-          type: 'sos',
-          position: [19.2183, 72.9781],
-          emergencyType: 'flood',
-          message: 'Trapped in flooded area',
-          userName: 'User456',
-          userPhone: '9876543211',
-          severity: 'critical',
-          status: 'verified',
-          location: {
-            address: 'Andheri East',
-            area: 'Western Suburbs',
-            city: 'Mumbai'
-          }
-        }
-      ];
-      setSosMarkers(mockSOSAlerts);
+      // Fetch SOS alerts from backend
+      const sosResponse = await fetch(`${API_BASE_URL}/sos/department/emergency_response?status=active&limit=50`, {
+        headers: getAuthHeaders()
+      });
 
-      // Mock road reports data
-      const mockRoadReports = [
-        {
-          id: '1',
-          type: 'road',
-          position: [19.0660, 72.8677],
-          status: 'blocked',
-          reportedBy: 'User789',
-          description: 'Road completely blocked due to flooding',
-          severity: 'high'
-        },
-        {
-          id: '2',
-          type: 'road',
-          position: [19.0960, 72.9077],
-          status: 'clear',
-          reportedBy: 'User012',
-          description: 'Road cleared and accessible',
-          severity: 'low'
+      if (sosResponse.ok) {
+        const sosResult = await sosResponse.json();
+        if (sosResult.success) {
+          const sosWithLocation = sosResult.alerts.filter(alert => 
+            alert.location && alert.location.lat && alert.location.lng
+          ).map(alert => ({
+            id: alert._id,
+            type: 'sos',
+            position: [alert.location.lat, alert.location.lng],
+            emergencyType: alert.emergencyType,
+            message: alert.message,
+            userName: alert.userName,
+            userPhone: alert.userPhone,
+            severity: alert.mlClassification?.urgencyLevel || alert.severity,
+            status: alert.status,
+            location: alert.location,
+            peopleAffected: alert.peopleAffected,
+            description: alert.description,
+            createdAt: alert.createdAt,
+            verified: alert.verified
+          }));
+          setSosMarkers(sosWithLocation);
         }
-      ];
-      setRoadMarkers(mockRoadReports);
+      } else {
+        console.error('Failed to fetch SOS alerts:', sosResponse.status);
+      }
+
+      // Fetch road reports from backend
+      const roadReportsResponse = await fetch(`${API_BASE_URL}/road-reports?limit=100&status=active`, {
+        headers: getAuthHeaders()
+      });
+
+      if (roadReportsResponse.ok) {
+        const roadReportsResult = await roadReportsResponse.json();
+        if (roadReportsResult.success) {
+          const roadReportsWithLocation = roadReportsResult.data.filter(report => 
+            report.coordinates && report.coordinates.lat && report.coordinates.lng
+          ).map(report => ({
+            id: report._id,
+            type: 'road',
+            position: [report.coordinates.lat, report.coordinates.lng],
+            status: report.type === 'blocked' ? 'blocked' : 'clear',
+            reportedBy: report.reporterName,
+            description: report.description,
+            severity: report.critical ? 'high' : 'medium',
+            critical: report.critical,
+            verified: report.verified,
+            verifications: report.verifications,
+            location: report.location,
+            createdAt: report.createdAt,
+            views: report.views
+          }));
+          setRoadMarkers(roadReportsWithLocation);
+        }
+      } else {
+        console.error('Failed to fetch road reports:', roadReportsResponse.status);
+      }
 
     } catch (err) {
       console.error('Error fetching map data:', err);
@@ -192,6 +194,70 @@ const MapView = ({ user }) => {
     }
   };
 
+  // Handle SOS alert actions
+  const handleSOSAction = async (alertId, action) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/sos/${alertId}/status`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          status: action,
+          adminId: user?.uid,
+          adminName: user?.displayName || 'Admin'
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          alert(`SOS alert ${action} successfully`);
+          fetchMapData(); // Refresh data
+        }
+      }
+    } catch (error) {
+      console.error('Error updating SOS alert:', error);
+      alert('Failed to update SOS alert');
+    }
+  };
+
+  // Handle road report actions
+  const handleRoadReportAction = async (reportId, action) => {
+    try {
+      let url = `${API_BASE_URL}/road-reports/${reportId}`;
+      let method = 'PATCH';
+      let body = {};
+
+      if (action === 'verify') {
+        url = `${API_BASE_URL}/road-reports/${reportId}/verify`;
+        method = 'POST';
+        body = { userId: user?.uid };
+      } else if (action === 'critical') {
+        url = `${API_BASE_URL}/road-reports/${reportId}/critical`;
+        body = { markedCriticalBy: user?.uid };
+      } else if (action === 'resolve') {
+        url = `${API_BASE_URL}/road-reports/${reportId}/resolve`;
+        body = { resolvedBy: user?.uid, resolutionNotes: 'Marked as resolved via map' };
+      }
+
+      const response = await fetch(url, {
+        method,
+        headers: getAuthHeaders(),
+        body: Object.keys(body).length ? JSON.stringify(body) : undefined
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          alert(`Road report ${action} successfully`);
+          fetchMapData(); // Refresh data
+        }
+      }
+    } catch (error) {
+      console.error('Error updating road report:', error);
+      alert('Failed to update road report');
+    }
+  };
+
   useEffect(() => {
     fetchMapData();
     getUserLocation();
@@ -210,19 +276,42 @@ const MapView = ({ user }) => {
             <div className="flex items-center mb-2">
               <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
               <h3 className="font-bold text-red-700">SOS Alert</h3>
+              {marker.verified && (
+                <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                  Verified
+                </span>
+              )}
             </div>
             <p className="text-sm font-medium">{marker.userName}</p>
-            <p className="text-sm text-gray-600">{marker.emergencyType}</p>
+            <p className="text-sm text-gray-600 capitalize">{marker.emergencyType}</p>
             <p className="text-sm mt-1">{marker.message}</p>
             <div className="mt-2 text-xs text-gray-500">
               <p>Phone: {marker.userPhone}</p>
-              <p>Status: {marker.status}</p>
-              <p>Severity: {marker.severity}</p>
+              <p>Status: <span className="capitalize">{marker.status}</span></p>
+              <p>Severity: <span className="capitalize">{marker.severity}</span></p>
+              <p>People Affected: {marker.peopleAffected}</p>
               {marker.location && <p>Location: {marker.location.address}</p>}
             </div>
-            <button className="mt-2 w-full bg-red-500 text-white py-1 px-3 rounded text-sm hover:bg-red-600">
-              Respond to SOS
-            </button>
+            <div className="mt-2 space-y-1">
+              <button 
+                onClick={() => handleSOSAction(marker.id, 'verified')}
+                className="w-full bg-green-500 text-white py-1 px-3 rounded text-sm hover:bg-green-600"
+              >
+                Verify Alert
+              </button>
+              <button 
+                onClick={() => handleSOSAction(marker.id, 'in_progress')}
+                className="w-full bg-blue-500 text-white py-1 px-3 rounded text-sm hover:bg-blue-600"
+              >
+                Mark In Progress
+              </button>
+              <button 
+                onClick={() => handleSOSAction(marker.id, 'resolved')}
+                className="w-full bg-gray-500 text-white py-1 px-3 rounded text-sm hover:bg-gray-600"
+              >
+                Mark Resolved
+              </button>
+            </div>
           </div>
         );
         break;
@@ -264,15 +353,44 @@ const MapView = ({ user }) => {
               <h3 className="font-bold text-yellow-700">
                 {isBlocked ? 'Road Blocked' : 'Road Clear'}
               </h3>
+              {marker.verified && (
+                <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                  Verified
+                </span>
+              )}
+              {marker.critical && (
+                <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded">
+                  Critical
+                </span>
+              )}
             </div>
             <p className="text-sm">{marker.description}</p>
             <div className="mt-2 text-xs text-gray-500">
               <p>Reported by: {marker.reportedBy}</p>
               <p>Severity: {marker.severity}</p>
+              <p>Verifications: {marker.verifications}</p>
+              <p>Views: {marker.views}</p>
             </div>
-            <button className="mt-2 w-full bg-yellow-500 text-white py-1 px-3 rounded text-sm hover:bg-yellow-600">
-              {isBlocked ? 'Report Cleared' : 'Confirm Status'}
-            </button>
+            <div className="mt-2 space-y-1">
+              <button 
+                onClick={() => handleRoadReportAction(marker.id, 'verify')}
+                className="w-full bg-green-500 text-white py-1 px-3 rounded text-sm hover:bg-green-600"
+              >
+                Verify Report
+              </button>
+              <button 
+                onClick={() => handleRoadReportAction(marker.id, 'critical')}
+                className="w-full bg-red-500 text-white py-1 px-3 rounded text-sm hover:bg-red-600"
+              >
+                {marker.critical ? 'Unmark Critical' : 'Mark Critical'}
+              </button>
+              <button 
+                onClick={() => handleRoadReportAction(marker.id, 'resolve')}
+                className="w-full bg-gray-500 text-white py-1 px-3 rounded text-sm hover:bg-gray-600"
+              >
+                Mark Resolved
+              </button>
+            </div>
           </div>
         );
         break;
@@ -456,16 +574,32 @@ const MapView = ({ user }) => {
                       <p className="text-sm text-gray-400"><span className="font-medium text-white">Emergency:</span> {selectedMarker.emergencyType}</p>
                       <p className="text-sm text-gray-400"><span className="font-medium text-white">Phone:</span> {selectedMarker.userPhone}</p>
                       <p className="text-sm text-gray-400"><span className="font-medium text-white">Status:</span> {selectedMarker.status}</p>
+                      <p className="text-sm text-gray-400"><span className="font-medium text-white">People Affected:</span> {selectedMarker.peopleAffected}</p>
                       <p className="text-sm text-gray-400"><span className="font-medium text-white">Location:</span> {selectedMarker.position[0].toFixed(4)}, {selectedMarker.position[1].toFixed(4)}</p>
                       <p className="text-sm text-gray-400 mt-2">{selectedMarker.message}</p>
+                      {selectedMarker.description && (
+                        <p className="text-sm text-gray-400 mt-2">{selectedMarker.description}</p>
+                      )}
                     </div>
                     
                     <div className="mt-4 space-y-2">
-                      <button className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                        Respond to SOS
+                      <button 
+                        onClick={() => handleSOSAction(selectedMarker.id, 'verified')}
+                        className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                      >
+                        Verify Alert
                       </button>
-                      <button className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                        Share Location
+                      <button 
+                        onClick={() => handleSOSAction(selectedMarker.id, 'in_progress')}
+                        className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        Mark In Progress
+                      </button>
+                      <button 
+                        onClick={() => handleSOSAction(selectedMarker.id, 'resolved')}
+                        className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        Mark Resolved
                       </button>
                     </div>
                   </div>
@@ -527,15 +661,29 @@ const MapView = ({ user }) => {
                       <p className="text-sm text-gray-400"><span className="font-medium text-white">Reported by:</span> {selectedMarker.reportedBy}</p>
                       <p className="text-sm text-gray-400"><span className="font-medium text-white">Status:</span> {selectedMarker.status}</p>
                       <p className="text-sm text-gray-400"><span className="font-medium text-white">Location:</span> {selectedMarker.position[0].toFixed(4)}, {selectedMarker.position[1].toFixed(4)}</p>
+                      <p className="text-sm text-gray-400"><span className="font-medium text-white">Verifications:</span> {selectedMarker.verifications}</p>
+                      <p className="text-sm text-gray-400"><span className="font-medium text-white">Views:</span> {selectedMarker.views}</p>
                       <p className="text-sm text-gray-400 mt-2">{selectedMarker.description}</p>
                     </div>
                     
                     <div className="mt-4 space-y-2">
-                      <button className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
-                        {selectedMarker.status === 'blocked' ? 'Report Cleared' : 'Confirm Status'}
+                      <button 
+                        onClick={() => handleRoadReportAction(selectedMarker.id, 'verify')}
+                        className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                      >
+                        Verify Report
                       </button>
-                      <button className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                        Share Update
+                      <button 
+                        onClick={() => handleRoadReportAction(selectedMarker.id, 'critical')}
+                        className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      >
+                        {selectedMarker.critical ? 'Unmark Critical' : 'Mark Critical'}
+                      </button>
+                      <button 
+                        onClick={() => handleRoadReportAction(selectedMarker.id, 'resolve')}
+                        className="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        Mark Resolved
                       </button>
                     </div>
                   </div>
@@ -594,7 +742,7 @@ const MapView = ({ user }) => {
                     Click on any marker to see details and take action. Use the map controls to zoom and pan.
                   </p>
                   <p className="text-sm text-gray-400">
-                    Real-time data from shelters is displayed. SOS alerts and road reports will show live updates as they come in.
+                    Real-time data from shelters, SOS alerts, and road reports is displayed with live updates.
                   </p>
                 </div>
 
