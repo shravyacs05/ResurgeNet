@@ -24,6 +24,22 @@ function App() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  useEffect(() => {
+  // ✅ Add GTranslate script globally
+  const script = document.createElement("script");
+  script.src = "https://cdn.gtranslate.net/widgets/latest/float.js";
+  script.defer = true;
+  document.body.appendChild(script);
+
+  // ✅ Configure translation settings
+  window.gtranslateSettings = {
+    default_language: "en",
+    languages: ["en", "hi", "mr"], // English, Hindi, Marathi
+    wrapper_selector: ".gtranslate_wrapper",
+    float_switcher_open_direction: "top",
+  };
+}, []);
+
   // Clear cache and localStorage on component mount
   useEffect(() => {
     const clearCache = () => {
@@ -285,6 +301,8 @@ function App() {
           {/* Fallback - 404 handling */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+{/* 🌍 Translation Button */}
+<div className="gtranslate_wrapper"></div>
 
         {/* ChatBot only for regular users */}
         {user?.role === 'user' && <ChatBot />}

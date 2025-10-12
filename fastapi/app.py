@@ -21,7 +21,7 @@ app.add_middleware(
 
 # Full department mapping
 DEPARTMENT_MAP = {
-    "related": "Emergency Operations / Disaster Management",
+    "related": "N/A",
     "request": "Disaster Management / Relief Coordination",
     "offer": "N/A",
     "aid_related": "Disaster Relief & Humanitarian Aid",
@@ -55,7 +55,7 @@ DEPARTMENT_MAP = {
     "earthquake": "Disaster Management / Earthquake Authority",
     "cold": "Social Welfare / Cold Shelter Programs",
     "other_weather": "Meteorological Department",
-    "direct_report": "Disaster Response Coordination"
+    "direct_report": "N/A"
 }
 
 # Simplified 5-department mapping

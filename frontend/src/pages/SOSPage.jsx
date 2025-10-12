@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
@@ -11,6 +11,13 @@ const SOSReporting = ({ user }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   
+  // Voice recognition states
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
+  const [speechError, setSpeechError] = useState('');
+  
+  const recognitionRef = useRef(null);
+
   const [formData, setFormData] = useState({
     emergencyType: "",
     message: "",
@@ -36,6 +43,102 @@ const SOSReporting = ({ user }) => {
     { value: "stranded", label: "Stranded", icon: "🚶" },
     { value: "other", label: "Other Emergency", icon: "⚠️" },
   ];
+
+  // Initialize speech recognition
+  useEffect(() => {
+    // Check if browser supports speech recognition
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (SpeechRecognition) {
+      setIsSpeechSupported(true);
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      
+      recognition.onstart = () => {
+        console.log("🎤 Voice recognition started");
+        setIsListening(true);
+        setSpeechError('');
+      };
+      
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map(result => result[0])
+          .map(result => result.transcript)
+          .join('');
+        
+        console.log("🎤 Voice input:", transcript);
+        
+        setFormData(prev => ({
+          ...prev,
+          message: transcript
+        }));
+      };
+      
+      recognition.onerror = (event) => {
+        console.error("🎤 Speech recognition error:", event.error);
+        setIsListening(false);
+        
+        switch (event.error) {
+          case 'no-speech':
+            setSpeechError('No speech detected. Please try again.');
+            break;
+          case 'audio-capture':
+            setSpeechError('No microphone found. Please check your microphone.');
+            break;
+          case 'not-allowed':
+            setSpeechError('Microphone permission denied. Please allow microphone access.');
+            break;
+          default:
+            setSpeechError('Error with voice recognition. Please try typing instead.');
+        }
+      };
+      
+      recognition.onend = () => {
+        console.log("🎤 Voice recognition ended");
+        setIsListening(false);
+      };
+      
+      recognitionRef.current = recognition;
+    } else {
+      console.log("🎤 Speech recognition not supported");
+      setIsSpeechSupported(false);
+    }
+    
+    // Cleanup
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  const startListening = () => {
+    if (recognitionRef.current && !isListening) {
+      try {
+        recognitionRef.current.start();
+      } catch (error) {
+        console.error("🎤 Error starting speech recognition:", error);
+        setSpeechError('Failed to start voice recognition. Please try again.');
+      }
+    }
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current && isListening) {
+      recognitionRef.current.stop();
+    }
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -331,19 +434,75 @@ const SOSReporting = ({ user }) => {
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Describe your emergency *
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-300">
+                  Describe your emergency *
+                </label>
+                
+                {/* Voice Recognition Button */}
+                {isSpeechSupported && (
+                  <div className="flex items-center gap-2">
+                    {isListening && (
+                      <div className="flex items-center gap-1 text-red-400">
+                        <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
+                        <span className="text-xs">Listening...</span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={toggleListening}
+                      disabled={loading}
+                      className={`p-2 rounded-full transition-all ${
+                        isListening 
+                          ? 'bg-red-600 text-white animate-pulse' 
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                      title={isListening ? 'Stop recording' : 'Start voice recording'}
+                    >
+                      {isListening ? (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M6 6h12v12H6z"/>
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <textarea
                 name="message"
                 value={formData.message}
                 onChange={handleChange}
-                placeholder="Please describe your emergency situation in detail. Include what help you need."
+                placeholder="Please describe your emergency situation in detail. Include what help you need. You can also use the microphone button to speak."
                 rows="4"
                 required
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white 
                          focus:outline-none focus:ring-2 focus:ring-red-500"
               />
+              
+              {/* Speech Recognition Status */}
+              {speechError && (
+                <div className="mt-2 p-2 bg-red-900/20 border border-red-800 rounded text-xs text-red-300">
+                  🎤 {speechError}
+                  <button 
+                    onClick={() => setSpeechError('')}
+                    className="ml-2 text-red-400 hover:text-red-300"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              
+              {!isSpeechSupported && (
+                <div className="mt-2 text-xs text-gray-400 flex items-center gap-1">
+                  <span>🎤 Voice input not supported in your browser</span>
+                </div>
+              )}
+              
               <p className="text-xs text-gray-400 mt-1">
                 Be specific - this helps our AI route your alert to the right department
               </p>

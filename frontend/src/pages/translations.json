@@ -1,0 +1,47 @@
+{
+  "en": {
+    "welcome": "Welcome",
+    "dashboard": "Dashboard",
+    "alerts": "Alerts",
+    "sos": "SOS",
+    "emergencyType": "Emergency Type",
+    "describeEmergency": "Describe your emergency",
+    "location": "Location",
+    "sendAlert": "Send Emergency Alert",
+    "medical": "Medical Emergency",
+    "fire": "Fire",
+    "search": "Search",
+    "filter": "Filter",
+    "logout": "Logout"
+  },
+  "hi": {
+    "welcome": "स्वागत है",
+    "dashboard": "डैशबोर्ड",
+    "alerts": "अलर्ट",
+    "sos": "एसओएस",
+    "emergencyType": "आपातकालीन प्रकार",
+    "describeEmergency": "अपनी आपात स्थिति बताएं",
+    "location": "स्थान",
+    "sendAlert": "आपातकालीन अलर्ट भेजें",
+    "medical": "चिकित्सा आपातकाल",
+    "fire": "आग",
+    "search": "खोजें",
+    "filter": "फिल्टर",
+    "logout": "लॉग आउट"
+  },
+  "mr": {
+    "welcome": "स्वागत आहे",
+    "dashboard": "डॅशबोर्ड",
+    "alerts": "अलर्ट",
+    "sos": "एसओएस",
+    "emergencyType": "आणीबाणी प्रकार",
+    "describeEmergency": "तुमची आणीबाणी स्थिती वर्णन करा",
+    "location": "स्थान",
+    "sendAlert": "आणीबाणी अलर्ट पाठवा",
+    "medical": "वैद्यकीय आणीबाणी",
+    "fire": "आग",
+    "search": "शोधा",
+    "filter": "फिल्टर",
+    "logout": "लॉग आउट"
+  }
+}
