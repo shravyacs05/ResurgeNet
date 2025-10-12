@@ -4,6 +4,7 @@ import SOSManagement from './SOSManagement';
 import RoadsManagement from './RoadsManagement';
 import SheltersManagement from './SheltersManagement';
 import VolunteerTaskAllotment from './VolunteerTaskAllotment';
+import MapView from '../MapView';
 
 const AdminDashboard = ({ user }) => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -983,6 +984,7 @@ const AdminDashboard = ({ user }) => {
               { id: 'roads', name: 'Road Reports' },
               { id: 'shelters', name: 'Shelters' },
               { id: 'volunteer_tasks', name: 'Volunteer Tasks' },
+              { id: 'map', name: 'Map' },
               { id: 'analytics', name: 'Analytics' },
               { id: 'system', name: 'System Settings' },
             ].map((tab) => (
@@ -1181,6 +1183,12 @@ const AdminDashboard = ({ user }) => {
 
           {activeTab === 'volunteer_tasks' && (
             <VolunteerTaskAllotment 
+              user={user}
+              getAuthHeaders={getAuthHeaders}
+            />
+          )}
+          {activeTab === 'map' && (
+            <MapView
               user={user}
               getAuthHeaders={getAuthHeaders}
             />
