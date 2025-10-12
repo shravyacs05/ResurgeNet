@@ -1,0 +1,12 @@
+# For the Web Application
+fastapi
+uvicorn[standard]
+jinja2
+
+# For Data Handling and ML Models
+numpy
+pandas
+scikit-learn
+lightgbm
+joblib
+tensorflow

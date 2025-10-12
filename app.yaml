@@ -1,0 +1,11 @@
+runtime: python
+env: flex
+entrypoint: uvicorn app:app --host 0.0.0.0 --port $PORT
+runtime_config:
+python_version: 3
+manual_scaling:
+instances: 1
+resources:
+cpu: 1
+memory_gb: 0.5
+disk_size_gb: 10
