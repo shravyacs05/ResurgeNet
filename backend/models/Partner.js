@@ -11,7 +11,7 @@ const partnerSchema = new mongoose.Schema({
   organizationType: {
     type: String,
     required: [true, 'Organization type is required'],
-    enum: ['NGO', 'Trust','Government', 'Corporate', 'Educational', 'Healthcare', 'Community', 'Other']
+    enum: ['NGO', 'Trust','Government Body', 'Society', 'Private Company', 'Foundation', 'Cooperative Society', 'Educational Institution', 'Healthcare Organization', 'Other']
   },
   registrationNumber: {
     type: String,
