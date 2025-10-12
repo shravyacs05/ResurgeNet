@@ -23,8 +23,7 @@ import ReliefPartners from './pages/ReliefPartners';
 function App() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
+useEffect(() => {
   // ✅ Add GTranslate script globally
   const script = document.createElement("script");
   script.src = "https://cdn.gtranslate.net/widgets/latest/float.js";
@@ -282,7 +281,7 @@ function App() {
           
           <Route 
             path="/superadmin-dashboard" 
-            element={user?.role === 'super_admin' ? <SuperAdminDashboard user={user} onLogout={handleLogout} /> : <Navigate to="/" replace />} 
+            element={user?.role === 'super_admin' ? <SuperAdminDashboard user={user} /> : <Navigate to="/" replace />} 
           />
 
           <Route 
@@ -300,6 +299,7 @@ function App() {
 />
           {/* Fallback - 404 handling */}
           <Route path="*" element={<Navigate to="/" replace />} />
+          
         </Routes>
 {/* 🌍 Translation Button */}
 <div className="gtranslate_wrapper"></div>
@@ -307,12 +307,7 @@ function App() {
         {/* ChatBot only for regular users */}
         {user?.role === 'user' && <ChatBot />}
 
-        {/* Development debug info */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="fixed bottom-4 right-4 bg-black bg-opacity-50 text-xs text-gray-400 p-2 rounded">
-            User: {user ? user.email : 'None'} | Role: {user ? user.role : 'None'}
-          </div>
-        )}
+        
       </div>
     </Router>
   );
