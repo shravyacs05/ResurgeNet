@@ -266,7 +266,7 @@ function App() {
           
           <Route 
             path="/superadmin-dashboard" 
-            element={user?.role === 'super_admin' ? <SuperAdminDashboard user={user} /> : <Navigate to="/" replace />} 
+            element={user?.role === 'super_admin' ? <SuperAdminDashboard user={user} onLogout={handleLogout} /> : <Navigate to="/" replace />} 
           />
 
           <Route 
