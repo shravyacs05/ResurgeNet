@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useLocation } from "react-router-dom"; // add this import at top
 import Navbar from './components/Navbar';
 import RoleSelection from './components/RoleSelection';
 import UserLogin from './components/UserLogin';
@@ -19,25 +20,41 @@ import News from './pages/News';
 import VolunteerTaskDashboard from './pages/VolunteerTaskDashboard';
 import PledgeSupport from './pages/PledgeSupport';
 
+
 import ReliefPartners from './pages/ReliefPartners';
 function App() {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-useEffect(() => {
-  // ✅ Add GTranslate script globally
-  const script = document.createElement("script");
-  script.src = "https://cdn.gtranslate.net/widgets/latest/float.js";
-  script.defer = true;
-  document.body.appendChild(script);
+ useEffect(() => {
+    // 🧹 Clean old instances (avoid duplicates)
+    const oldScript = document.querySelector('script[src*="gtranslate"]');
+    if (oldScript) oldScript.remove();
+    const oldIframe = document.querySelector('iframe[src*="gtranslate"]');
+    if (oldIframe) oldIframe.remove();
 
-  // ✅ Configure translation settings
-  window.gtranslateSettings = {
-    default_language: "en",
-    languages: ["en", "hi", "mr"], // English, Hindi, Marathi
-    wrapper_selector: ".gtranslate_wrapper",
-    float_switcher_open_direction: "top",
-  };
-}, []);
+    // ✅ Define settings BEFORE loading script
+    window.gtranslateSettings = {
+      default_language: "en",
+      languages: ["en", "hi", "mr"],
+      wrapper_selector: ".gtranslate_wrapper",
+      float_switcher_open_direction: "top",
+    };
+
+    // ✅ Add the script after a small delay (so DOM is ready)
+    const timeout = setTimeout(() => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.gtranslate.net/widgets/latest/float.js";
+      script.defer = true;
+      document.body.appendChild(script);
+    }, 700);
+
+    // 🧹 Cleanup on route change
+    return () => {
+      clearTimeout(timeout);
+      const widgets = document.querySelectorAll("iframe[src*='gtranslate']");
+      widgets.forEach(el => el.remove());
+    };
+  }, [location.pathname]); // re-run on every page change
 
   // Clear cache and localStorage on component mount
   useEffect(() => {
