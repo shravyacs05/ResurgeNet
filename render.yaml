@@ -3,5 +3,6 @@ services:
   - type: web
     name: resurgenet
     env: docker
+    dockerfilePath: ./docker-compose.yml
     plan: free
     branch: main
