@@ -1,9 +1,7 @@
 # render.yaml
 services:
   - type: web
-    name: resurgenet-stack
+    name: resurgenet
     env: docker
     plan: free
-    buildCommand: ""
-    startCommand: docker-compose up --build
     branch: main
