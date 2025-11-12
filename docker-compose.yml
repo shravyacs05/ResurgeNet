@@ -1,0 +1,35 @@
+version: "3.9"
+services:
+  fastapi:
+    build: ./fastapi
+    container_name: fastapi_service
+    command: uvicorn app:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    restart: always
+
+  node_backend:
+    build: ./backend
+    container_name: node_service
+    command: npm start
+    environment:
+      - FASTAPI_URL=http://fastapi:8000
+    depends_on:
+      - fastapi
+    ports:
+      - "5002:5002"
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: react_frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_NODE_API=http://node_backend:5000
+      - REACT_APP_FASTAPI=http://fastapi:8000
+    depends_on:
+      - node_backend
+    restart: always
